@@ -51,15 +51,37 @@
                     
                     {% if student.objectives %}
                     <div class="objectives-list">
-                        <strong>Current Objectives:</strong>
-                        <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                        <strong>Current Objectives & Items:</strong>
+                        <div style="margin-top: 0.5rem;">
                             {% for objective in student.objectives %}
-                            <li style="margin-bottom: 0.25rem;">
-                                {{ objective.text }}
-                                <button class="btn btn-danger btn-small" style="margin-left: 0.5rem; padding: 4px 8px; font-size: 12px;" onclick="deleteObjective({{ objective.id }}, {{ student.id }})">×</button>
-                            </li>
+                            <div class="objective-item" style="margin-bottom: 1rem; border: 1px solid #e1e5e9; border-radius: 8px; background: #f8f9fa;">
+                                <div class="objective-header" style="padding: 0.75rem; background: #e9ecef; border-radius: 8px 8px 0 0; display: flex; justify-content: between; align-items: center;">
+                                    <div style="flex: 1;">
+                                        <strong>{{ objective.text }}</strong>
+                                    </div>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <button class="btn btn-small btn-secondary" onclick="toggleObjectiveItems({{ objective.id }})" id="toggle-btn-{{ objective.id }}">Manage Items</button>
+                                        <button class="btn btn-danger btn-small" onclick="deleteObjective({{ objective.id }}, {{ student.id }})">Delete Objective</button>
+                                    </div>
+                                </div>
+                                
+                                <div class="objective-items-section" id="items-section-{{ objective.id }}" style="display: none; padding: 0.75rem;">
+                                    <div class="add-items" style="margin-bottom: 1rem;">
+                                        <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Add Items (one per line):</label>
+                                        <textarea id="items-text-{{ objective.id }}" placeholder="Enter items, one per line:&#10;• Can identify red objects&#10;• Can identify blue objects&#10;• Can identify green objects" style="min-height: 80px; width: 100%; resize: vertical;"></textarea>
+                                        <button class="btn btn-success btn-small mt-1" onclick="saveObjectiveItems({{ objective.id }})">Save Items</button>
+                                    </div>
+                                    
+                                    <div class="current-items" id="current-items-{{ objective.id }}">
+                                        <strong>Current Items:</strong>
+                                        <div class="items-list" id="items-list-{{ objective.id }}" style="margin-top: 0.5rem;">
+                                            <em style="color: #666;">Loading items...</em>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             {% endfor %}
-                        </ul>
+                        </div>
                     </div>
                     {% endif %}
                 </div>
@@ -254,6 +276,115 @@
         } catch (error) {
             console.error('Error:', error);
             showMessage('Failed to delete objective', 'error');
+        }
+    }
+    
+    async function toggleObjectiveItems(objectiveId) {
+        const itemsSection = document.getElementById(`items-section-${objectiveId}`);
+        const toggleBtn = document.getElementById(`toggle-btn-${objectiveId}`);
+        
+        if (itemsSection.style.display === 'none') {
+            itemsSection.style.display = 'block';
+            toggleBtn.textContent = 'Hide Items';
+            // Load existing items when opening
+            await loadObjectiveItems(objectiveId);
+        } else {
+            itemsSection.style.display = 'none';
+            toggleBtn.textContent = 'Manage Items';
+        }
+    }
+    
+    async function loadObjectiveItems(objectiveId) {
+        try {
+            const response = await fetch(`/objective_items/get/${objectiveId}`);
+            const result = await response.json();
+            
+            const itemsList = document.getElementById(`items-list-${objectiveId}`);
+            
+            if (result.items && result.items.length > 0) {
+                itemsList.innerHTML = '<ul style="list-style-type: disc; padding-left: 1.5rem;">' +
+                    result.items.map(item => `
+                        <li style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                            <span>${item.text}</span>
+                            <button class="btn btn-danger btn-small" style="margin-left: 1rem; padding: 4px 8px; font-size: 12px;" onclick="deleteObjectiveItem(${item.id}, ${objectiveId})">×</button>
+                        </li>
+                    `).join('') +
+                    '</ul>';
+            } else {
+                itemsList.innerHTML = '<em style="color: #666;">No items added yet. Add some items above to get started!</em>';
+            }
+        } catch (error) {
+            console.error('Error loading objective items:', error);
+            document.getElementById(`items-list-${objectiveId}`).innerHTML = '<em style="color: #d32f2f;">Error loading items</em>';
+        }
+    }
+    
+    async function saveObjectiveItems(objectiveId) {
+        const itemsText = document.getElementById(`items-text-${objectiveId}`).value.trim();
+        
+        if (!itemsText) {
+            showMessage('Please enter some items to save', 'error');
+            return;
+        }
+        
+        const btn = event.target;
+        setLoading(btn, true);
+        
+        try {
+            const formData = new FormData();
+            formData.append('objective_id', objectiveId);
+            formData.append('items_text', itemsText);
+            
+            const response = await fetch('/objective_items/save', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage('Items saved successfully!');
+                // Clear the textarea
+                document.getElementById(`items-text-${objectiveId}`).value = '';
+                // Reload the items list
+                await loadObjectiveItems(objectiveId);
+            } else {
+                showMessage(result.error || 'Failed to save items', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to save items', 'error');
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+    
+    async function deleteObjectiveItem(itemId, objectiveId) {
+        if (!confirm('Are you sure you want to delete this item?')) {
+            return;
+        }
+        
+        try {
+            const formData = new FormData();
+            formData.append('item_id', itemId);
+            
+            const response = await fetch('/objective_items/delete', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage('Item deleted successfully!');
+                // Reload the items list
+                await loadObjectiveItems(objectiveId);
+            } else {
+                showMessage(result.error || 'Failed to delete item', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to delete item', 'error');
         }
     }
     

@@ -56,11 +56,36 @@ def init_db():
         )
     ''')
     
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS objective_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            objective_id INTEGER NOT NULL,
+            item_text TEXT NOT NULL,
+            display_order INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (objective_id) REFERENCES objectives (id) ON DELETE CASCADE
+        )
+    ''')
+    
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS event_selections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            objective_item_id INTEGER NOT NULL,
+            selected BOOLEAN NOT NULL DEFAULT 0,
+            FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE,
+            FOREIGN KEY (objective_item_id) REFERENCES objective_items (id) ON DELETE CASCADE,
+            UNIQUE(event_id, objective_item_id)
+        )
+    ''')
+    
     # Create indices for performance
     conn.execute('CREATE INDEX IF NOT EXISTS idx_objectives_student_id ON objectives (student_id)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_events_student_id ON events (student_id)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_events_objective_id ON events (objective_id)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_events_session_id ON events (session_id)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_objective_items_objective_id ON objective_items (objective_id)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_event_selections_event_id ON event_selections (event_id)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_event_selections_item_id ON event_selections (objective_item_id)')
     
     # Add new columns to existing events table if they don't exist
     try:
@@ -224,6 +249,78 @@ def delete_objective():
     
     conn = get_db()
     conn.execute('DELETE FROM objectives WHERE id = ?', (objective_id,))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True})
+
+@app.route('/objective_items/save', methods=['POST'])
+def save_objective_items():
+    """Save items for a specific objective."""
+    objective_id = request.form.get('objective_id')
+    items_text = request.form.get('items_text', '').strip()
+    
+    if not objective_id:
+        return jsonify({'error': 'Objective ID is required'}), 400
+    
+    conn = get_db()
+    
+    # Delete existing items for this objective
+    conn.execute('DELETE FROM objective_items WHERE objective_id = ?', (objective_id,))
+    
+    # Parse and save new items
+    if items_text:
+        lines = [line.strip() for line in items_text.split('\n') if line.strip()]
+        
+        # Handle numbered lists (remove numbers)
+        items = []
+        for line in lines:
+            # Remove leading numbers like "1.", "2.", etc.
+            import re
+            cleaned = re.sub(r'^\d+\.\s*', '', line).strip()
+            # Remove leading bullets like "•", "-", "*"
+            cleaned = re.sub(r'^[•\-\*]\s*', '', cleaned).strip()
+            if cleaned:
+                items.append(cleaned)
+        
+        # Insert new items with display order
+        for i, item_text in enumerate(items):
+            conn.execute('INSERT INTO objective_items (objective_id, item_text, display_order) VALUES (?, ?, ?)',
+                        (objective_id, item_text, i))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True})
+
+@app.route('/objective_items/get/<int:objective_id>')
+def get_objective_items(objective_id):
+    """Get items for a specific objective."""
+    conn = get_db()
+    
+    items = conn.execute('''
+        SELECT id, item_text, display_order
+        FROM objective_items
+        WHERE objective_id = ?
+        ORDER BY display_order
+    ''', (objective_id,)).fetchall()
+    
+    conn.close()
+    
+    items_list = [{'id': item['id'], 'text': item['item_text'], 'order': item['display_order']} for item in items]
+    
+    return jsonify({'items': items_list})
+
+@app.route('/objective_items/delete', methods=['POST'])
+def delete_objective_item():
+    """Delete a specific objective item."""
+    item_id = request.form.get('item_id')
+    
+    if not item_id:
+        return jsonify({'error': 'Item ID is required'}), 400
+    
+    conn = get_db()
+    conn.execute('DELETE FROM objective_items WHERE id = ?', (item_id,))
     conn.commit()
     conn.close()
     
@@ -424,6 +521,131 @@ def get_counts():
             notes[str(event['student_id'])] = event['notes']
     
     return jsonify({'counts': counts, 'notes': notes})
+
+@app.route('/event/toggle_item_selection', methods=['POST'])
+def toggle_item_selection():
+    """Toggle selection of a specific objective item for an event."""
+    data = request.get_json()
+    date_str = data.get('date')
+    student_id = data.get('student_id')
+    objective_id = data.get('objective_id')
+    item_id = data.get('item_id')
+    selected = data.get('selected', False)
+    activity = data.get('activity', '').strip()
+    prompt_level = data.get('prompt_level', '').strip()
+    
+    if not all([date_str, student_id, objective_id, item_id]):
+        return jsonify({'error': 'Missing required parameters'}), 400
+    
+    session_id = get_or_create_session(date_str)
+    
+    conn = get_db()
+    
+    # Get or create event for this session/student/objective
+    cursor = conn.execute('''
+        SELECT id FROM events 
+        WHERE session_id = ? AND student_id = ? AND objective_id = ?
+    ''', (session_id, student_id, objective_id))
+    event = cursor.fetchone()
+    
+    if event:
+        event_id = event['id']
+        # Update existing event with activity and prompt_level if provided
+        conn.execute('''
+            UPDATE events SET activity = ?, prompt_level = ? 
+            WHERE id = ?
+        ''', (activity if activity else None, prompt_level if prompt_level else None, event_id))
+    else:
+        # Create new event
+        cursor = conn.execute('''
+            INSERT INTO events (session_id, student_id, objective_id, count, activity, prompt_level) 
+            VALUES (?, ?, ?, 0, ?, ?)
+        ''', (session_id, student_id, objective_id, activity if activity else None, prompt_level if prompt_level else None))
+        event_id = cursor.lastrowid
+    
+    # Handle item selection
+    if selected:
+        # Add or update selection
+        conn.execute('''
+            INSERT OR REPLACE INTO event_selections (event_id, objective_item_id, selected) 
+            VALUES (?, ?, 1)
+        ''', (event_id, item_id))
+    else:
+        # Remove selection
+        conn.execute('''
+            DELETE FROM event_selections 
+            WHERE event_id = ? AND objective_item_id = ?
+        ''', (event_id, item_id))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True})
+
+@app.route('/event/selections', methods=['GET'])
+def get_selections():
+    """Get existing item selections for a date and students."""
+    date_str = request.args.get('date')
+    student_ids = request.args.getlist('student_id')
+    
+    if not date_str or not student_ids:
+        return jsonify({'error': 'Missing required parameters'}), 400
+    
+    conn = get_db()
+    
+    # Get session for this date
+    cursor = conn.execute('SELECT id FROM sessions WHERE date = ?', (date_str,))
+    session = cursor.fetchone()
+    
+    if not session:
+        conn.close()
+        return jsonify({'selections': {}, 'activities': {}, 'prompt_levels': {}, 'notes': {}})
+    
+    session_id = session['id']
+    
+    # Get all events and their selections for this session and students
+    placeholders = ','.join(['?' for _ in student_ids])
+    query = f'''
+        SELECT e.student_id, e.objective_id, e.activity, e.prompt_level, e.notes,
+               es.objective_item_id
+        FROM events e
+        LEFT JOIN event_selections es ON e.id = es.event_id AND es.selected = 1
+        WHERE e.session_id = ? AND e.student_id IN ({placeholders})
+    '''
+    
+    params = [session_id] + student_ids
+    results = conn.execute(query, params).fetchall()
+    conn.close()
+    
+    # Format response
+    selections = {}
+    activities = {}
+    prompt_levels = {}
+    notes = {}
+    
+    for row in results:
+        key = f"{row['student_id']}-{row['objective_id']}"
+        
+        # Collect selected items
+        if row['objective_item_id'] is not None:
+            if key not in selections:
+                selections[key] = []
+            selections[key].append(row['objective_item_id'])
+        
+        # Collect activities and prompt levels
+        if row['activity']:
+            activities[key] = row['activity']
+        if row['prompt_level']:
+            prompt_levels[key] = row['prompt_level']
+        if row['notes']:
+            notes[str(row['student_id'])] = row['notes']
+    
+    return jsonify({
+        'selections': selections,
+        'activities': activities, 
+        'prompt_levels': prompt_levels,
+        'notes': notes
+    })
 
 @app.route('/report')
 def report():

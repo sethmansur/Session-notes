@@ -75,13 +75,13 @@
         showMessage(`Loaded ${selectedStudents.length} student(s) for ${sessionDate}`);
     }
     
-    function renderStudentCards() {
+    async function renderStudentCards() {
         const container = document.getElementById('student-cards');
         container.innerHTML = '';
         
         const studentsData = {{ students | tojson }};
         
-        selectedStudents.forEach(selectedStudent => {
+        for (const selectedStudent of selectedStudents) {
             const studentData = studentsData.find(s => s.id == selectedStudent.id);
             
             if (!studentData || !studentData.objectives || studentData.objectives.length === 0) {
@@ -92,49 +92,88 @@
                     <p style="color: #666; text-align: center; padding: 1rem;">No objectives found for this student.</p>
                 `;
                 container.appendChild(card);
-                return;
+                continue;
             }
             
             const card = document.createElement('div');
             card.className = 'card';
-            card.innerHTML = `
-                <h3>${selectedStudent.name}</h3>
+            
+            let cardContent = `<h3>${selectedStudent.name}</h3><div class="objectives-list" style="display: grid; gap: 1rem;">`;
+            
+            // Process each objective and load its items
+            for (const objective of studentData.objectives) {
+                const items = await loadObjectiveItemsForCollection(objective.id);
                 
-                <div class="objectives-grid" style="display: grid; gap: 0.75rem;">
-                    ${studentData.objectives.map(objective => `
-                        <div class="objective-row" style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px;">
-                            <div class="objective-text" style="font-size: 0.95rem; font-weight: 500; margin-bottom: 0.5rem;">
-                                ${objective.text}
-                            </div>
-                            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                                <input type="text" id="activity-${selectedStudent.id}-${objective.id}" 
-                                       placeholder="Activity" 
-                                       style="flex: 1; min-width: 120px; padding: 8px; font-size: 0.9rem; border: 1px solid #ccc; border-radius: 4px;">
-                                <select id="prompt-${selectedStudent.id}-${objective.id}" 
-                                        style="min-width: 100px; padding: 8px; font-size: 0.9rem; border: 1px solid #ccc; border-radius: 4px;">
-                                    <option value="">Prompt</option>
-                                    <option value="I">Independent</option>
-                                    <option value="V">Verbal</option>
-                                    <option value="G">Gestural</option>
-                                    <option value="P">Physical</option>
-                                    <option value="M">Max Support</option>
-                                </select>
-                                <div class="counter-controls" style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <button class="btn btn-secondary btn-small decrement-btn" 
-                                            onclick="decrementCount(${selectedStudent.id}, ${objective.id}, this)"
-                                            style="width: 40px; height: 40px; font-size: 18px; font-weight: bold;">−</button>
-                                    <div class="count-display" 
-                                         id="count-${selectedStudent.id}-${objective.id}"
-                                         style="min-width: 40px; text-align: center; font-size: 1.2rem; font-weight: bold; color: #2c3e50;">0</div>
-                                    <button class="btn btn-success increment-btn" 
-                                            onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)"
-                                            style="width: 50px; height: 50px; font-size: 24px; font-weight: bold;">+</button>
+                cardContent += `
+                    <div class="objective-section" style="border: 1px solid #e1e5e9; border-radius: 12px; background: #f8f9fa;">
+                        <div class="objective-header" 
+                             style="padding: 1rem; background: #e9ecef; border-radius: 12px 12px 0 0; cursor: pointer;"
+                             onclick="toggleObjectiveSection(${selectedStudent.id}, ${objective.id})">
+                            <div style="display: flex; justify-content: between; align-items: center;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem;">${objective.text}</div>
+                                    <div style="font-size: 0.85rem; color: #666;">
+                                        <span id="selected-count-${selectedStudent.id}-${objective.id}">0</span> items selected
+                                    </div>
                                 </div>
+                                <div style="font-size: 1.2rem; font-weight: bold; color: #666;" id="toggle-icon-${selectedStudent.id}-${objective.id}">▼</div>
                             </div>
                         </div>
-                    `).join('')}
-                </div>
-                
+                        
+                        <div class="objective-content" id="content-${selectedStudent.id}-${objective.id}" 
+                             style="display: none; padding: 1rem; border-top: 1px solid #ddd;">
+                            
+                            <!-- Activity and Prompt Controls -->
+                            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 150px;">
+                                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600; font-size: 0.9rem;">Activity</label>
+                                    <input type="text" id="activity-${selectedStudent.id}-${objective.id}" 
+                                           placeholder="Enter activity..." 
+                                           style="width: 100%; padding: 8px; font-size: 0.9rem; border: 1px solid #ccc; border-radius: 6px;">
+                                </div>
+                                <div style="min-width: 120px;">
+                                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600; font-size: 0.9rem;">Prompt Level</label>
+                                    <select id="prompt-${selectedStudent.id}-${objective.id}" 
+                                            style="width: 100%; padding: 8px; font-size: 0.9rem; border: 1px solid #ccc; border-radius: 6px;">
+                                        <option value="">Select...</option>
+                                        <option value="I">Independent</option>
+                                        <option value="V">Verbal</option>
+                                        <option value="G">Gestural</option>
+                                        <option value="P">Physical</option>
+                                        <option value="M">Max Support</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Items Checklist -->
+                            <div class="items-checklist" id="items-${selectedStudent.id}-${objective.id}">
+                                ${items.length > 0 ? `
+                                    <label style="display: block; margin-bottom: 0.75rem; font-weight: 600; font-size: 0.9rem;">Select completed items:</label>
+                                    <div style="display: grid; gap: 0.5rem;">
+                                        ${items.map(item => `
+                                            <label style="display: flex; align-items: center; padding: 0.5rem; background: white; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: background-color 0.2s;">
+                                                <input type="checkbox" 
+                                                       id="item-${selectedStudent.id}-${objective.id}-${item.id}"
+                                                       value="${item.id}"
+                                                       style="margin-right: 0.75rem; transform: scale(1.2);"
+                                                       onchange="handleItemSelection(${selectedStudent.id}, ${objective.id}, ${item.id})">
+                                                <span style="font-size: 0.95rem;">${item.text}</span>
+                                            </label>
+                                        `).join('')}
+                                    </div>
+                                ` : `
+                                    <div style="text-align: center; color: #666; padding: 2rem; font-style: italic;">
+                                        No items configured for this objective.<br>
+                                        <a href="/students" style="color: #007bff;">Add items in Students & Objectives</a>
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            cardContent += `</div>
                 <div class="notes-section" style="margin-top: 1rem;">
                     <label for="notes-${selectedStudent.id}" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Session Notes</label>
                     <textarea id="notes-${selectedStudent.id}" 
@@ -144,11 +183,154 @@
                 </div>
             `;
             
+            card.innerHTML = cardContent;
             container.appendChild(card);
-        });
+        }
         
-        // Load existing counts for this date
-        loadExistingCounts();
+        // Load existing selections for this date
+        await loadExistingSelections();
+    }
+    
+    async function loadObjectiveItemsForCollection(objectiveId) {
+        try {
+            const response = await fetch(`/objective_items/get/${objectiveId}`);
+            const result = await response.json();
+            return result.items || [];
+        } catch (error) {
+            console.error('Error loading objective items:', error);
+            return [];
+        }
+    }
+    
+    function toggleObjectiveSection(studentId, objectiveId) {
+        const content = document.getElementById(`content-${studentId}-${objectiveId}`);
+        const icon = document.getElementById(`toggle-icon-${studentId}-${objectiveId}`);
+        
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            icon.textContent = '▲';
+        } else {
+            content.style.display = 'none';
+            icon.textContent = '▼';
+        }
+    }
+    
+    async function handleItemSelection(studentId, objectiveId, itemId) {
+        const checkbox = document.getElementById(`item-${studentId}-${objectiveId}-${itemId}`);
+        const activityInput = document.getElementById(`activity-${studentId}-${objectiveId}`);
+        const promptSelect = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        
+        const activity = activityInput ? activityInput.value.trim() : '';
+        const promptLevel = promptSelect ? promptSelect.value : '';
+        
+        try {
+            const response = await fetch('/event/toggle_item_selection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    date: sessionDate,
+                    student_id: studentId,
+                    objective_id: objectiveId,
+                    item_id: itemId,
+                    selected: checkbox.checked,
+                    activity: activity,
+                    prompt_level: promptLevel
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (!result.success) {
+                // Revert checkbox state if server request failed
+                checkbox.checked = !checkbox.checked;
+                showMessage(result.error || 'Failed to update selection', 'error');
+            } else {
+                // Update the selection count display
+                updateSelectionCount(studentId, objectiveId);
+                
+                // Show brief success feedback
+                if (checkbox.checked) {
+                    showMessage('Item selected', 'success', 1000);
+                }
+            }
+        } catch (error) {
+            console.error('Error updating item selection:', error);
+            // Revert checkbox state on error
+            checkbox.checked = !checkbox.checked;
+            showMessage('Failed to update selection', 'error');
+        }
+    }
+    
+    function updateSelectionCount(studentId, objectiveId) {
+        const checkboxes = document.querySelectorAll(`input[id^="item-${studentId}-${objectiveId}-"]:checked`);
+        const countElement = document.getElementById(`selected-count-${studentId}-${objectiveId}`);
+        if (countElement) {
+            countElement.textContent = checkboxes.length;
+        }
+    }
+    
+    async function loadExistingSelections() {
+        if (selectedStudents.length === 0) return;
+        
+        try {
+            const params = new URLSearchParams();
+            params.append('date', sessionDate);
+            selectedStudents.forEach(student => {
+                params.append('student_id', student.id);
+            });
+            
+            const response = await fetch(`/event/selections?${params.toString()}`);
+            const result = await response.json();
+            
+            if (result.selections) {
+                // Update checkbox states
+                Object.entries(result.selections).forEach(([key, selections]) => {
+                    const [studentId, objectiveId] = key.split('-');
+                    selections.forEach(itemId => {
+                        const checkbox = document.getElementById(`item-${studentId}-${objectiveId}-${itemId}`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                    // Update count display
+                    updateSelectionCount(studentId, objectiveId);
+                });
+            }
+            
+            if (result.activities) {
+                // Update activity inputs
+                Object.entries(result.activities).forEach(([key, activity]) => {
+                    const activityInput = document.getElementById(`activity-${key}`);
+                    if (activityInput) {
+                        activityInput.value = activity;
+                    }
+                });
+            }
+            
+            if (result.prompt_levels) {
+                // Update prompt level selects
+                Object.entries(result.prompt_levels).forEach(([key, promptLevel]) => {
+                    const promptSelect = document.getElementById(`prompt-${key}`);
+                    if (promptSelect) {
+                        promptSelect.value = promptLevel;
+                    }
+                });
+            }
+            
+            if (result.notes) {
+                // Update notes textareas
+                Object.entries(result.notes).forEach(([studentId, notes]) => {
+                    const notesElement = document.getElementById(`notes-${studentId}`);
+                    if (notesElement) {
+                        notesElement.value = notes;
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error loading existing selections:', error);
+        }
     }
     
     async function loadExistingCounts() {
