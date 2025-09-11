@@ -16,15 +16,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "SaaS Demo"
+args = "Speech Therapy App"
 
 [[workflows.workflow]]
-name = "SaaS Demo"
+name = "Speech Therapy App"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python auth_demo.py"
+args = "python app.py"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
@@ -35,7 +35,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 45299
+localPort = 43657
 externalPort = 3000
 
 [deployment]
