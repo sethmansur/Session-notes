@@ -58,10 +58,6 @@ with app.app_context():
 
 # Database tables are managed by SQLAlchemy models in models.py
 
-def get_db():
-    """Get database session using SQLAlchemy."""
-    return db.session
-
 def get_or_create_session(date_str):
     """Get or create a session for the given date."""
     from datetime import datetime
@@ -111,39 +107,34 @@ def health_check():
 @require_login
 def students():
     """Show students and objectives management page. Login required to protect client data."""
-    conn = get_db()
+    # Get default organization
+    organization = Organization.query.first()
+    if not organization:
+        organization = Organization(name="Default Clinic", subdomain="default")
+        db.session.add(organization)
+        db.session.commit()
     
-    # Get all students with their objectives
-    students_data = conn.execute('''
-        SELECT s.id, s.first_name,
-               GROUP_CONCAT(o.id || '|' || o.objective_text, '|||') as objectives
-        FROM students s
-        LEFT JOIN objectives o ON s.id = o.student_id
-        GROUP BY s.id, s.first_name
-        ORDER BY s.first_name
-    ''').fetchall()
+    # Get all students with their objectives using proper ORM queries
+    students_data = Student.query.filter_by(organization_id=organization.id)\
+        .options(db.joinedload(Student.objectives))\
+        .order_by(Student.first_name).all()
     
-    conn.close()
-    
-    # Parse objectives for each student
+    # Format data for template
     students = []
-    for row in students_data:
-        student = {
-            'id': row['id'],
-            'first_name': row['first_name'],
+    for student in students_data:
+        student_dict = {
+            'id': student.id,
+            'first_name': student.first_name,
             'objectives': []
         }
         
-        if row['objectives']:
-            for obj_str in row['objectives'].split('|||'):
-                if obj_str:
-                    obj_id, obj_text = obj_str.split('|', 1)
-                    student['objectives'].append({
-                        'id': int(obj_id),
-                        'text': obj_text
-                    })
+        for objective in student.objectives:
+            student_dict['objectives'].append({
+                'id': objective.id,
+                'text': objective.objective_text
+            })
         
-        students.append(student)
+        students.append(student_dict)
     
     return render_template('students.html', students=students)
 
@@ -244,12 +235,15 @@ def delete_objective():
     if not objective_id:
         return jsonify({'error': 'Objective ID is required'}), 400
     
-    conn = get_db()
-    conn.execute('DELETE FROM objectives WHERE id = ?', (objective_id,))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    try:
+        objective = Objective.query.get(objective_id)
+        if objective:
+            db.session.delete(objective)
+            db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/objective_items/save', methods=['POST'])
 @require_login
@@ -261,52 +255,44 @@ def save_objective_items():
     if not objective_id:
         return jsonify({'error': 'Objective ID is required'}), 400
     
-    conn = get_db()
-    
-    # Delete existing items for this objective
-    conn.execute('DELETE FROM objective_items WHERE objective_id = ?', (objective_id,))
-    
-    # Parse and save new items
-    if items_text:
-        lines = [line.strip() for line in items_text.split('\n') if line.strip()]
+    try:
+        # Delete existing items for this objective
+        ObjectiveItem.query.filter_by(objective_id=objective_id).delete()
         
-        # Handle numbered lists (remove numbers)
-        items = []
-        for line in lines:
-            # Remove leading numbers like "1.", "2.", etc.
-            import re
-            cleaned = re.sub(r'^\d+\.\s*', '', line).strip()
-            # Remove leading bullets like "•", "-", "*"
-            cleaned = re.sub(r'^[•\-\*]\s*', '', cleaned).strip()
-            if cleaned:
-                items.append(cleaned)
+        # Parse and save new items
+        if items_text:
+            lines = [line.strip() for line in items_text.split('\n') if line.strip()]
+            
+            # Handle numbered lists (remove numbers)
+            items = []
+            for line in lines:
+                # Remove leading numbers like "1.", "2.", etc.
+                import re
+                cleaned = re.sub(r'^\d+\.\s*', '', line).strip()
+                # Remove leading bullets like "•", "-", "*"
+                cleaned = re.sub(r'^[•\-\*]\s*', '', cleaned).strip()
+                if cleaned:
+                    items.append(cleaned)
+            
+            # Insert new items with display order
+            for i, item_text in enumerate(items):
+                objective_item = ObjectiveItem(objective_id=objective_id, item_text=item_text, display_order=i)
+                db.session.add(objective_item)
         
-        # Insert new items with display order
-        for i, item_text in enumerate(items):
-            conn.execute('INSERT INTO objective_items (objective_id, item_text, display_order) VALUES (?, ?, ?)',
-                        (objective_id, item_text, i))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/objective_items/get/<int:objective_id>')
 @require_login
 def get_objective_items(objective_id):
     """Get items for a specific objective."""
-    conn = get_db()
+    items = ObjectiveItem.query.filter_by(objective_id=objective_id)\
+        .order_by(ObjectiveItem.display_order).all()
     
-    items = conn.execute('''
-        SELECT id, item_text, display_order
-        FROM objective_items
-        WHERE objective_id = ?
-        ORDER BY display_order
-    ''', (objective_id,)).fetchall()
-    
-    conn.close()
-    
-    items_list = [{'id': item['id'], 'text': item['item_text'], 'order': item['display_order']} for item in items]
+    items_list = [{'id': item.id, 'text': item.item_text, 'order': item.display_order} for item in items]
     
     return jsonify({'items': items_list})
 
@@ -319,50 +305,48 @@ def delete_objective_item():
     if not item_id:
         return jsonify({'error': 'Item ID is required'}), 400
     
-    conn = get_db()
-    conn.execute('DELETE FROM objective_items WHERE id = ?', (item_id,))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    try:
+        objective_item = ObjectiveItem.query.get(item_id)
+        if objective_item:
+            db.session.delete(objective_item)
+            db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/collect')
 @require_login
 def collect():
     """Show data collection page. Login required to protect client data."""
-    conn = get_db()
+    # Get default organization
+    organization = Organization.query.first()
+    if not organization:
+        organization = Organization(name="Default Clinic", subdomain="default")
+        db.session.add(organization)
+        db.session.commit()
     
-    # Get all students with their objectives
-    students_data = conn.execute('''
-        SELECT s.id, s.first_name,
-               GROUP_CONCAT(o.id || '|' || o.objective_text, '|||') as objectives
-        FROM students s
-        LEFT JOIN objectives o ON s.id = o.student_id
-        GROUP BY s.id, s.first_name
-        ORDER BY s.first_name
-    ''').fetchall()
+    # Get all students with their objectives using proper ORM queries
+    students_data = Student.query.filter_by(organization_id=organization.id)\
+        .options(db.joinedload(Student.objectives))\
+        .order_by(Student.first_name).all()
     
-    conn.close()
-    
-    # Parse objectives for each student
+    # Format data for template
     students = []
-    for row in students_data:
-        student = {
-            'id': row['id'],
-            'first_name': row['first_name'],
+    for student in students_data:
+        student_dict = {
+            'id': student.id,
+            'first_name': student.first_name,
             'objectives': []
         }
         
-        if row['objectives']:
-            for obj_str in row['objectives'].split('|||'):
-                if obj_str:
-                    obj_id, obj_text = obj_str.split('|', 1)
-                    student['objectives'].append({
-                        'id': int(obj_id),
-                        'text': obj_text
-                    })
+        for objective in student.objectives:
+            student_dict['objectives'].append({
+                'id': objective.id,
+                'text': objective.objective_text
+            })
         
-        students.append(student)
+        students.append(student_dict)
     
     today = date.today().isoformat()
     return render_template('collect.html', students=students, today=today)
@@ -383,33 +367,36 @@ def increment_event():
     
     session_id = get_or_create_session(date_str)
     
-    conn = get_db()
-    
-    # Check if event exists
-    cursor = conn.execute('''
-        SELECT count FROM events 
-        WHERE session_id = ? AND student_id = ? AND objective_id = ?
-    ''', (session_id, student_id, objective_id))
-    
-    event = cursor.fetchone()
-    
-    if event:
-        new_count = event['count'] + 1
-        conn.execute('''
-            UPDATE events SET count = ?, activity = ?, prompt_level = ? 
-            WHERE session_id = ? AND student_id = ? AND objective_id = ?
-        ''', (new_count, activity, prompt_level, session_id, student_id, objective_id))
-    else:
-        new_count = 1
-        conn.execute('''
-            INSERT INTO events (session_id, student_id, objective_id, count, activity, prompt_level)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (session_id, student_id, objective_id, new_count, activity, prompt_level))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'count': new_count})
+    try:
+        # Check if event exists
+        event = Event.query.filter_by(
+            session_id=session_id, 
+            student_id=student_id, 
+            objective_id=objective_id
+        ).first()
+        
+        if event:
+            new_count = event.count + 1
+            event.count = new_count
+            event.activity = activity if activity else event.activity
+            event.prompt_level = prompt_level if prompt_level else event.prompt_level
+        else:
+            new_count = 1
+            event = Event(
+                session_id=session_id,
+                student_id=student_id,
+                objective_id=objective_id,
+                count=new_count,
+                activity=activity if activity else None,
+                prompt_level=prompt_level if prompt_level else None
+            )
+            db.session.add(event)
+        
+        db.session.commit()
+        return jsonify({'count': new_count})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/event/decrement', methods=['POST'])
 @require_login
@@ -425,35 +412,28 @@ def decrement_event():
     
     session_id = get_or_create_session(date_str)
     
-    conn = get_db()
-    
-    # Check if event exists
-    cursor = conn.execute('''
-        SELECT count FROM events 
-        WHERE session_id = ? AND student_id = ? AND objective_id = ?
-    ''', (session_id, student_id, objective_id))
-    
-    event = cursor.fetchone()
-    
-    if event and event['count'] > 0:
-        new_count = event['count'] - 1
-        if new_count == 0:
-            # Remove the event if count reaches 0
-            conn.execute('''
-                DELETE FROM events 
-                WHERE session_id = ? AND student_id = ? AND objective_id = ?
-            ''', (session_id, student_id, objective_id))
+    try:
+        # Check if event exists
+        event = Event.query.filter_by(
+            session_id=session_id, 
+            student_id=student_id, 
+            objective_id=objective_id
+        ).first()
+        
+        if event and event.count > 0:
+            new_count = event.count - 1
+            if new_count == 0:
+                # Remove the event if count reaches 0
+                db.session.delete(event)
+            else:
+                event.count = new_count
+            db.session.commit()
+            return jsonify({'count': new_count})
         else:
-            conn.execute('''
-                UPDATE events SET count = ? 
-                WHERE session_id = ? AND student_id = ? AND objective_id = ?
-            ''', (new_count, session_id, student_id, objective_id))
-        conn.commit()
-        conn.close()
-        return jsonify({'count': new_count})
-    else:
-        conn.close()
-        return jsonify({'count': 0})
+            return jsonify({'count': 0})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/event/save_notes', methods=['POST'])
 @require_login
@@ -469,18 +449,17 @@ def save_notes():
     
     session_id = get_or_create_session(date_str)
     
-    conn = get_db()
-    
-    # Update notes for all events for this student on this date
-    conn.execute('''
-        UPDATE events SET notes = ? 
-        WHERE session_id = ? AND student_id = ?
-    ''', (notes if notes else None, session_id, student_id))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    try:
+        # Update notes for all events for this student on this date
+        events = Event.query.filter_by(session_id=session_id, student_id=student_id).all()
+        for event in events:
+            event.notes = notes if notes else None
+        
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/event/counts', methods=['GET'])
 @require_login
@@ -492,42 +471,31 @@ def get_counts():
     if not date_str or not student_ids:
         return jsonify({'error': 'Missing required parameters'}), 400
     
-    conn = get_db()
-    
     # Get session for this date
-    cursor = conn.execute('SELECT id FROM sessions WHERE date = ?', (date_str,))
-    session = cursor.fetchone()
+    session = Session.query.filter_by(date=date_str).first()
     
     if not session:
-        conn.close()
         return jsonify({'counts': {}})
     
-    session_id = session['id']
-    
     # Get all counts for this session and students
-    placeholders = ','.join(['?' for _ in student_ids])
-    query = f'''
-        SELECT student_id, objective_id, count, notes
-        FROM events 
-        WHERE session_id = ? AND student_id IN ({placeholders})
-    '''
-    
-    params = [session_id] + student_ids
-    events = conn.execute(query, params).fetchall()
-    conn.close()
+    events = Event.query.filter(
+        Event.session_id == session.id,
+        Event.student_id.in_(student_ids)
+    ).all()
     
     # Format response
     counts = {}
     notes = {}
     for event in events:
-        key = f"{event['student_id']}-{event['objective_id']}"
-        counts[key] = event['count']
-        if event['notes']:
-            notes[str(event['student_id'])] = event['notes']
+        key = f"{event.student_id}-{event.objective_id}"
+        counts[key] = event.count
+        if event.notes:
+            notes[str(event.student_id)] = event.notes
     
     return jsonify({'counts': counts, 'notes': notes})
 
 @app.route('/event/toggle_item_selection', methods=['POST'])
+@require_login
 def toggle_item_selection():
     """Toggle selection of a specific objective item for an event."""
     data = request.get_json()
@@ -544,48 +512,62 @@ def toggle_item_selection():
     
     session_id = get_or_create_session(date_str)
     
-    conn = get_db()
-    
-    # Get or create event for this session/student/objective
-    cursor = conn.execute('''
-        SELECT id FROM events 
-        WHERE session_id = ? AND student_id = ? AND objective_id = ?
-    ''', (session_id, student_id, objective_id))
-    event = cursor.fetchone()
-    
-    if event:
-        event_id = event['id']
-        # Update existing event with activity and prompt_level if provided
-        conn.execute('''
-            UPDATE events SET activity = ?, prompt_level = ? 
-            WHERE id = ?
-        ''', (activity if activity else None, prompt_level if prompt_level else None, event_id))
-    else:
-        # Create new event
-        cursor = conn.execute('''
-            INSERT INTO events (session_id, student_id, objective_id, count, activity, prompt_level) 
-            VALUES (?, ?, ?, 0, ?, ?)
-        ''', (session_id, student_id, objective_id, activity if activity else None, prompt_level if prompt_level else None))
-        event_id = cursor.lastrowid
-    
-    # Handle item selection
-    if selected:
-        # Add or update selection
-        conn.execute('''
-            INSERT OR REPLACE INTO event_selections (event_id, objective_item_id, selected) 
-            VALUES (?, ?, 1)
-        ''', (event_id, item_id))
-    else:
-        # Remove selection
-        conn.execute('''
-            DELETE FROM event_selections 
-            WHERE event_id = ? AND objective_item_id = ?
-        ''', (event_id, item_id))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    try:
+        # Get or create event for this session/student/objective
+        event = Event.query.filter_by(
+            session_id=session_id, 
+            student_id=student_id, 
+            objective_id=objective_id
+        ).first()
+        
+        if event:
+            # Update existing event with activity and prompt_level if provided
+            if activity:
+                event.activity = activity
+            if prompt_level:
+                event.prompt_level = prompt_level
+        else:
+            # Create new event
+            event = Event(
+                session_id=session_id,
+                student_id=student_id,
+                objective_id=objective_id,
+                count=0,
+                activity=activity if activity else None,
+                prompt_level=prompt_level if prompt_level else None
+            )
+            db.session.add(event)
+            db.session.flush()  # Ensure event gets an ID
+        
+        # Handle item selection
+        if selected:
+            # Check if selection already exists
+            selection = EventSelection.query.filter_by(
+                event_id=event.id, 
+                objective_item_id=item_id
+            ).first()
+            
+            if not selection:
+                selection = EventSelection(
+                    event_id=event.id,
+                    objective_item_id=item_id,
+                    selected=True
+                )
+                db.session.add(selection)
+            else:
+                selection.selected = True
+        else:
+            # Remove selection
+            EventSelection.query.filter_by(
+                event_id=event.id, 
+                objective_item_id=item_id
+            ).delete()
+        
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/event/selections', methods=['GET'])
 @require_login
@@ -597,31 +579,19 @@ def get_selections():
     if not date_str or not student_ids:
         return jsonify({'error': 'Missing required parameters'}), 400
     
-    conn = get_db()
-    
     # Get session for this date
-    cursor = conn.execute('SELECT id FROM sessions WHERE date = ?', (date_str,))
-    session = cursor.fetchone()
+    session = Session.query.filter_by(date=date_str).first()
     
     if not session:
-        conn.close()
         return jsonify({'selections': {}, 'activities': {}, 'prompt_levels': {}, 'notes': {}})
     
-    session_id = session['id']
-    
     # Get all events and their selections for this session and students
-    placeholders = ','.join(['?' for _ in student_ids])
-    query = f'''
-        SELECT e.student_id, e.objective_id, e.activity, e.prompt_level, e.notes,
-               es.objective_item_id
-        FROM events e
-        LEFT JOIN event_selections es ON e.id = es.event_id AND es.selected = 1
-        WHERE e.session_id = ? AND e.student_id IN ({placeholders})
-    '''
-    
-    params = [session_id] + student_ids
-    results = conn.execute(query, params).fetchall()
-    conn.close()
+    events = Event.query.filter(
+        Event.session_id == session.id,
+        Event.student_id.in_(student_ids)
+    ).options(
+        db.joinedload(Event.event_selections).joinedload(EventSelection.objective_item)
+    ).all()
     
     # Format response
     selections = {}
@@ -629,22 +599,21 @@ def get_selections():
     prompt_levels = {}
     notes = {}
     
-    for row in results:
-        key = f"{row['student_id']}-{row['objective_id']}"
+    for event in events:
+        key = f"{event.student_id}-{event.objective_id}"
         
         # Collect selected items
-        if row['objective_item_id'] is not None:
-            if key not in selections:
-                selections[key] = []
-            selections[key].append(row['objective_item_id'])
+        selected_items = [es.objective_item_id for es in event.event_selections if es.selected]
+        if selected_items:
+            selections[key] = selected_items
         
         # Collect activities and prompt levels
-        if row['activity']:
-            activities[key] = row['activity']
-        if row['prompt_level']:
-            prompt_levels[key] = row['prompt_level']
-        if row['notes']:
-            notes[str(row['student_id'])] = row['notes']
+        if event.activity:
+            activities[key] = event.activity
+        if event.prompt_level:
+            prompt_levels[key] = event.prompt_level
+        if event.notes:
+            notes[str(event.student_id)] = event.notes
     
     return jsonify({
         'selections': selections,
@@ -662,9 +631,16 @@ def report():
     student_id = request.args.get('student_id', '')
     report_type = request.args.get('type', 'by_objective')
     
+    # Get default organization
+    organization = Organization.query.first()
+    if not organization:
+        organization = Organization(name="Default Clinic", subdomain="default")
+        db.session.add(organization)
+        db.session.commit()
+    
     # Get all students for the filter dropdown
-    conn = get_db()
-    students = conn.execute('SELECT id, first_name FROM students ORDER BY first_name').fetchall()
+    students = Student.query.filter_by(organization_id=organization.id)\
+        .order_by(Student.first_name).all()
     
     # Default date range (last 30 days)
     if not start_date:
@@ -672,54 +648,40 @@ def report():
     if not end_date:
         end_date = date.today().isoformat()
     
-    # Build query based on filters
-    params = []
-    where_clauses = []
+    # Build base query with joins
+    query = db.session.query(Event)\
+        .join(Session, Event.session_id == Session.id)\
+        .join(Student, Event.student_id == Student.id)\
+        .join(Objective, Event.objective_id == Objective.id)
     
+    # Apply filters
     if start_date:
-        where_clauses.append('s.date >= ?')
-        params.append(start_date)
-    
+        query = query.filter(Session.date >= start_date)
     if end_date:
-        where_clauses.append('s.date <= ?')
-        params.append(end_date)
-    
+        query = query.filter(Session.date <= end_date)
     if student_id:
-        where_clauses.append('st.id = ?')
-        params.append(student_id)
-    
-    where_sql = 'WHERE ' + ' AND '.join(where_clauses) if where_clauses else ''
+        query = query.filter(Student.id == student_id)
     
     if report_type == 'summary':
         # Summary report: student, objective, total count, date range
-        query = f'''
-            SELECT st.first_name as student, o.objective_text as objective,
-                   SUM(e.count) as total_count,
-                   MIN(s.date) as start_date,
-                   MAX(s.date) as end_date
-            FROM events e
-            JOIN sessions s ON e.session_id = s.id
-            JOIN students st ON e.student_id = st.id
-            JOIN objectives o ON e.objective_id = o.id
-            {where_sql}
-            GROUP BY st.id, o.id
-            ORDER BY st.first_name, o.objective_text
-        '''
+        from sqlalchemy import func
+        report_data = query.with_entities(
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            func.sum(Event.count).label('total_count'),
+            func.min(Session.date).label('start_date'),
+            func.max(Session.date).label('end_date')
+        ).group_by(Student.id, Objective.id)\
+         .order_by(Student.first_name, Objective.objective_text).all()
     else:
         # By objective report: date, student, objective, count, notes
-        query = f'''
-            SELECT s.date, st.first_name as student, o.objective_text as objective,
-                   e.count, e.notes
-            FROM events e
-            JOIN sessions s ON e.session_id = s.id
-            JOIN students st ON e.student_id = st.id
-            JOIN objectives o ON e.objective_id = o.id
-            {where_sql}
-            ORDER BY s.date DESC, st.first_name, o.objective_text
-        '''
-    
-    report_data = conn.execute(query, params).fetchall()
-    conn.close()
+        report_data = query.with_entities(
+            Session.date.label('date'),
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            Event.count.label('count'),
+            Event.notes.label('notes')
+        ).order_by(Session.date.desc(), Student.first_name, Objective.objective_text).all()
     
     return render_template('report.html', 
                          report_data=report_data,
@@ -738,55 +700,40 @@ def report_csv():
     student_id = request.args.get('student_id', '')
     report_type = request.args.get('type', 'by_objective')
     
-    # Same query logic as report()
-    conn = get_db()
-    params = []
-    where_clauses = []
+    # Build base query with joins
+    query = db.session.query(Event)\
+        .join(Session, Event.session_id == Session.id)\
+        .join(Student, Event.student_id == Student.id)\
+        .join(Objective, Event.objective_id == Objective.id)
     
+    # Apply filters
     if start_date:
-        where_clauses.append('s.date >= ?')
-        params.append(start_date)
-    
+        query = query.filter(Session.date >= start_date)
     if end_date:
-        where_clauses.append('s.date <= ?')
-        params.append(end_date)
-    
+        query = query.filter(Session.date <= end_date)
     if student_id:
-        where_clauses.append('st.id = ?')
-        params.append(student_id)
-    
-    where_sql = 'WHERE ' + ' AND '.join(where_clauses) if where_clauses else ''
+        query = query.filter(Student.id == student_id)
     
     if report_type == 'summary':
-        query = f'''
-            SELECT st.first_name as student, o.objective_text as objective,
-                   SUM(e.count) as total_count,
-                   MIN(s.date) as start_date,
-                   MAX(s.date) as end_date
-            FROM events e
-            JOIN sessions s ON e.session_id = s.id
-            JOIN students st ON e.student_id = st.id
-            JOIN objectives o ON e.objective_id = o.id
-            {where_sql}
-            GROUP BY st.id, o.id
-            ORDER BY st.first_name, o.objective_text
-        '''
+        from sqlalchemy import func
+        report_data = query.with_entities(
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            func.sum(Event.count).label('total_count'),
+            func.min(Session.date).label('start_date'),
+            func.max(Session.date).label('end_date')
+        ).group_by(Student.id, Objective.id)\
+         .order_by(Student.first_name, Objective.objective_text).all()
         headers = ['Student', 'Objective', 'Total Count', 'Start Date', 'End Date']
     else:
-        query = f'''
-            SELECT s.date, st.first_name as student, o.objective_text as objective,
-                   e.count, e.notes
-            FROM events e
-            JOIN sessions s ON e.session_id = s.id
-            JOIN students st ON e.student_id = st.id
-            JOIN objectives o ON e.objective_id = o.id
-            {where_sql}
-            ORDER BY s.date DESC, st.first_name, o.objective_text
-        '''
+        report_data = query.with_entities(
+            Session.date.label('date'),
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            Event.count.label('count'),
+            Event.notes.label('notes')
+        ).order_by(Session.date.desc(), Student.first_name, Objective.objective_text).all()
         headers = ['Date', 'Student', 'Objective', 'Count', 'Notes']
-    
-    report_data = conn.execute(query, params).fetchall()
-    conn.close()
     
     # Create CSV
     output = io.StringIO()
@@ -794,7 +741,8 @@ def report_csv():
     writer.writerow(headers)
     
     for row in report_data:
-        writer.writerow([row[i] if row[i] is not None else '' for i in range(len(headers))])
+        writer.writerow([getattr(row, attr.lower()) if getattr(row, attr.lower()) is not None else '' 
+                        for attr in headers])
     
     output.seek(0)
     
@@ -819,62 +767,48 @@ def report_tsv():
     student_id = request.args.get('student_id', '')
     report_type = request.args.get('type', 'by_objective')
     
-    # Same query logic as report()
-    conn = get_db()
-    params = []
-    where_clauses = []
+    # Build base query with joins
+    query = db.session.query(Event)\
+        .join(Session, Event.session_id == Session.id)\
+        .join(Student, Event.student_id == Student.id)\
+        .join(Objective, Event.objective_id == Objective.id)
     
+    # Apply filters
     if start_date:
-        where_clauses.append('s.date >= ?')
-        params.append(start_date)
-    
+        query = query.filter(Session.date >= start_date)
     if end_date:
-        where_clauses.append('s.date <= ?')
-        params.append(end_date)
-    
+        query = query.filter(Session.date <= end_date)
     if student_id:
-        where_clauses.append('st.id = ?')
-        params.append(student_id)
-    
-    where_sql = 'WHERE ' + ' AND '.join(where_clauses) if where_clauses else ''
+        query = query.filter(Student.id == student_id)
     
     if report_type == 'summary':
-        query = f'''
-            SELECT st.first_name as student, o.objective_text as objective,
-                   SUM(e.count) as total_count,
-                   MIN(s.date) as start_date,
-                   MAX(s.date) as end_date
-            FROM events e
-            JOIN sessions s ON e.session_id = s.id
-            JOIN students st ON e.student_id = st.id
-            JOIN objectives o ON e.objective_id = o.id
-            {where_sql}
-            GROUP BY st.id, o.id
-            ORDER BY st.first_name, o.objective_text
-        '''
+        from sqlalchemy import func
+        report_data = query.with_entities(
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            func.sum(Event.count).label('total_count'),
+            func.min(Session.date).label('start_date'),
+            func.max(Session.date).label('end_date')
+        ).group_by(Student.id, Objective.id)\
+         .order_by(Student.first_name, Objective.objective_text).all()
         headers = ['Student', 'Objective', 'Total Count', 'Start Date', 'End Date']
     else:
-        query = f'''
-            SELECT s.date, st.first_name as student, o.objective_text as objective,
-                   e.count, e.notes
-            FROM events e
-            JOIN sessions s ON e.session_id = s.id
-            JOIN students st ON e.student_id = st.id
-            JOIN objectives o ON e.objective_id = o.id
-            {where_sql}
-            ORDER BY s.date DESC, st.first_name, o.objective_text
-        '''
+        report_data = query.with_entities(
+            Session.date.label('date'),
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            Event.count.label('count'),
+            Event.notes.label('notes')
+        ).order_by(Session.date.desc(), Student.first_name, Objective.objective_text).all()
         headers = ['Date', 'Student', 'Objective', 'Count', 'Notes']
-    
-    report_data = conn.execute(query, params).fetchall()
-    conn.close()
     
     # Create TSV
     lines = []
     lines.append('\t'.join(headers))
     
     for row in report_data:
-        line = '\t'.join([str(row[i]) if row[i] is not None else '' for i in range(len(headers))])
+        line = '\t'.join([str(getattr(row, attr.lower())) if getattr(row, attr.lower()) is not None else '' 
+                         for attr in headers])
         lines.append(line)
     
     tsv_content = '\n'.join(lines)
@@ -967,7 +901,13 @@ def import_database_sheet(sheet):
     """Import student data from the Database sheet."""
     results = {'students_added': 0, 'objectives_added': 0, 'students': []}
     
-    conn = get_db()
+    # Get default organization
+    organization = Organization.query.first()
+    if not organization:
+        organization = Organization(name="Default Clinic", subdomain="default")
+        db.session.add(organization)
+        db.session.commit()
+    
     max_col = sheet.max_column or 0
     max_row = sheet.max_row or 0
     
@@ -982,17 +922,26 @@ def import_database_sheet(sheet):
         
         for col, student_name in student_columns:
             try:
-                # Add student (ignore duplicates)
-                cursor = conn.execute('INSERT OR IGNORE INTO students (first_name) VALUES (?)', (student_name,))
-                if cursor.rowcount > 0:
+                # Check if student already exists
+                existing_student = Student.query.filter_by(
+                    organization_id=organization.id, 
+                    first_name=student_name
+                ).first()
+                
+                if existing_student:
+                    student = existing_student
+                else:
+                    # Add new student
+                    student = Student(
+                        organization_id=organization.id,
+                        first_name=student_name
+                    )
+                    db.session.add(student)
+                    db.session.flush()  # Get the ID
                     results['students_added'] += 1
                 
-                # Get student ID
-                student_row = conn.execute('SELECT id FROM students WHERE first_name = ?', (student_name,)).fetchone()
-                student_id = student_row['id']
-                
                 # Clear existing objectives for this student
-                conn.execute('DELETE FROM objectives WHERE student_id = ?', (student_id,))
+                Objective.query.filter_by(student_id=student.id).delete()
                 
                 # Extract objectives from column
                 objectives = []
@@ -1008,8 +957,11 @@ def import_database_sheet(sheet):
                 
                 # Insert objectives
                 for objective_text in objectives:
-                    conn.execute('INSERT INTO objectives (student_id, objective_text) VALUES (?, ?)',
-                               (student_id, objective_text))
+                    objective = Objective(
+                        student_id=student.id,
+                        objective_text=objective_text
+                    )
+                    db.session.add(objective)
                     results['objectives_added'] += 1
                 
                 results['students'].append({
@@ -1022,13 +974,11 @@ def import_database_sheet(sheet):
                 print(f"Error importing student {student_name}: {e}")
                 continue
         
-        conn.commit()
+        db.session.commit()
         
     except Exception as e:
-        conn.rollback()
+        db.session.rollback()
         raise e
-    finally:
-        conn.close()
     
     return results
 
