@@ -2,17 +2,56 @@
 import sqlite3
 import os
 from datetime import datetime, date
-from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file
+from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file, session
+from flask_login import current_user
 import csv
 import io
 import openpyxl
+from werkzeug.middleware.proxy_fix import ProxyFix
+import logging
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Initialize Flask app
 app = Flask(__name__)
-app.config['DATABASE'] = 'speech_therapy.db'
+app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-def init_db():
-    """Initialize the database with required tables and indices."""
-    conn = sqlite3.connect(app.config['DATABASE'])
+# Import database and auth after app creation
+from models import db
+from replit_auth import login_manager, make_replit_blueprint, require_login
+
+# Initialize login manager
+login_manager.init_app(app)
+
+# Register auth blueprint
+app.register_blueprint(make_replit_blueprint(), url_prefix="/auth")
+
+# Make session permanent
+@app.before_request
+def make_session_permanent():
+    session.permanent = True
+
+# Database configuration
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    'pool_pre_ping': True,
+    "pool_recycle": 300,
+}
+
+# Initialize database
+db.init_app(app)
+
+# Create tables
+with app.app_context():
+    db.create_all()
+    logging.info("Database tables created")
+
+def get_db():
+    """Get database connection for SQLite operations"""
+    conn = sqlite3.connect('speech_therapy.db')
     conn.execute('PRAGMA foreign_keys = ON')
     
     # Create tables
@@ -126,19 +165,11 @@ def get_or_create_session(date_str):
 
 @app.route('/')
 def index():
-    """Health check and redirect to collect page."""
-    try:
-        # Quick health check - ensure database is accessible
-        conn = get_db()
-        conn.execute('SELECT 1').fetchone()
-        conn.close()
-        
-        # Redirect to collect page for normal users
+    """Landing page - shows login for logged out users, redirects to collect for logged in users."""
+    if current_user.is_authenticated:
         return redirect(url_for('collect'))
-    except Exception as e:
-        # Return simple health status for deployment health checks
-        app.logger.error(f"Health check failed: {str(e)}")
-        return jsonify({'status': 'error', 'message': 'Service unavailable'}), 503
+    else:
+        return render_template('landing.html')
 
 @app.route('/health')
 def health_check():
@@ -154,8 +185,9 @@ def health_check():
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
 @app.route('/students')
+@require_login
 def students():
-    """Show students and objectives management page."""
+    """Show students and objectives management page. Login required to protect client data."""
     conn = get_db()
     
     # Get all students with their objectives
@@ -193,6 +225,7 @@ def students():
     return render_template('students.html', students=students)
 
 @app.route('/students/add', methods=['POST'])
+@require_login
 def add_student():
     """Add a new student."""
     first_name = request.form.get('first_name', '').strip()
@@ -212,6 +245,7 @@ def add_student():
         return jsonify({'error': 'Student name already exists'}), 400
 
 @app.route('/students/delete', methods=['POST'])
+@require_login
 def delete_student():
     """Delete a student and all their objectives/events."""
     student_id = request.form.get('student_id')
@@ -227,6 +261,7 @@ def delete_student():
     return jsonify({'success': True})
 
 @app.route('/objectives/save', methods=['POST'])
+@require_login
 def save_objectives():
     """Save objectives for a student."""
     student_id = request.form.get('student_id')
@@ -264,6 +299,7 @@ def save_objectives():
     return jsonify({'success': True})
 
 @app.route('/objectives/delete', methods=['POST'])
+@require_login
 def delete_objective():
     """Delete a specific objective."""
     objective_id = request.form.get('objective_id')
@@ -279,6 +315,7 @@ def delete_objective():
     return jsonify({'success': True})
 
 @app.route('/objective_items/save', methods=['POST'])
+@require_login
 def save_objective_items():
     """Save items for a specific objective."""
     objective_id = request.form.get('objective_id')
@@ -318,6 +355,7 @@ def save_objective_items():
     return jsonify({'success': True})
 
 @app.route('/objective_items/get/<int:objective_id>')
+@require_login
 def get_objective_items(objective_id):
     """Get items for a specific objective."""
     conn = get_db()
@@ -336,6 +374,7 @@ def get_objective_items(objective_id):
     return jsonify({'items': items_list})
 
 @app.route('/objective_items/delete', methods=['POST'])
+@require_login
 def delete_objective_item():
     """Delete a specific objective item."""
     item_id = request.form.get('item_id')
@@ -351,8 +390,9 @@ def delete_objective_item():
     return jsonify({'success': True})
 
 @app.route('/collect')
+@require_login
 def collect():
-    """Show data collection page."""
+    """Show data collection page. Login required to protect client data."""
     conn = get_db()
     
     # Get all students with their objectives
@@ -391,6 +431,7 @@ def collect():
     return render_template('collect.html', students=students, today=today)
 
 @app.route('/event/increment', methods=['POST'])
+@require_login
 def increment_event():
     """Increment count for an objective on a date."""
     data = request.get_json()
@@ -434,6 +475,7 @@ def increment_event():
     return jsonify({'count': new_count})
 
 @app.route('/event/decrement', methods=['POST'])
+@require_login
 def decrement_event():
     """Decrement count for an objective on a date."""
     data = request.get_json()
@@ -477,6 +519,7 @@ def decrement_event():
         return jsonify({'count': 0})
 
 @app.route('/event/save_notes', methods=['POST'])
+@require_login
 def save_notes():
     """Save notes for a student on a date."""
     data = request.get_json()
@@ -503,6 +546,7 @@ def save_notes():
     return jsonify({'success': True})
 
 @app.route('/event/counts', methods=['GET'])
+@require_login
 def get_counts():
     """Get existing counts for a date and students."""
     date_str = request.args.get('date')
@@ -607,6 +651,7 @@ def toggle_item_selection():
     return jsonify({'success': True})
 
 @app.route('/event/selections', methods=['GET'])
+@require_login
 def get_selections():
     """Get existing item selections for a date and students."""
     date_str = request.args.get('date')
@@ -672,6 +717,7 @@ def get_selections():
     })
 
 @app.route('/report')
+@require_login
 def report():
     """Show reports page with filtering."""
     start_date = request.args.get('start_date', '')
@@ -747,6 +793,7 @@ def report():
                          report_type=report_type)
 
 @app.route('/report.csv')
+@require_login
 def report_csv():
     """Export report as CSV."""
     start_date = request.args.get('start_date', '')
@@ -827,6 +874,7 @@ def report_csv():
                      download_name=filename)
 
 @app.route('/report.tsv')
+@require_login
 def report_tsv():
     """Export report as TSV for clipboard."""
     start_date = request.args.get('start_date', '')
@@ -897,6 +945,7 @@ def report_tsv():
     return tsv_content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 @app.route('/admin/import_spreadsheet', methods=['GET', 'POST'])
+@require_login
 def import_spreadsheet():
     """Import data from the Excel spreadsheet."""
     if request.method == 'GET':
@@ -1099,11 +1148,8 @@ def analyze_data_collection_sheet(sheet):
     return structure
 
 if __name__ == '__main__':
-    # Initialize database on startup
-    init_db()
-    
     # Get port from environment variable (for production) or default to 5000 (for development)
     port = int(os.environ.get('PORT', 5000))
     
-    # Run the app in production mode
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # Run the app
+    app.run(host='0.0.0.0', port=port, debug=True)
