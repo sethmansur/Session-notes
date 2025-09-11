@@ -1,0 +1,119 @@
+You are building a tiny, fast iPad-friendly web app for speech-therapy data collection. Keep token usage minimal. No frameworks beyond Flask, SQLite (built-in sqlite3), and vanilla JS. No CSS libs. One-file server if reasonable, plus a few small static files. Mobile-first UI with large touch targets. Deliver a working app runnable with python app.py, serving at http://localhost:8000.
+
+Core requirements
+
+Data model (SQLite)
+
+students(id INTEGER PK, first_name TEXT UNIQUE NOT NULL)
+
+objectives(id INTEGER PK, student_id INTEGER FK, objective_text TEXT NOT NULL)
+
+sessions(id INTEGER PK, date TEXT NOT NULL) // ISO date: YYYY-MM-DD
+
+events(id INTEGER PK, session_id INTEGER FK, student_id INTEGER FK, objective_id INTEGER FK, count INTEGER NOT NULL, notes TEXT)
+
+Add simple indices on student_id/objective_id. Initialize DB if missing.
+
+IEP objective intake
+
+Page “Students & Objectives”:
+
+Left: text box to paste raw objectives per student (one student per block).
+
+Right: list of students; selecting a student shows their objectives in a textarea (one objective per line).
+
+Buttons: Add Student, Save Objectives, Delete Student, Delete Objective.
+
+Import helper: if pasted text contains “1.” “2.” etc., split into separate objectives.
+
+Quick data collection
+
+Page “Collect Data”:
+
+Multi-select dropdown (select 1–4 students).
+
+Date picker defaults to today.
+
+When students selected: show a card per student, listing their objectives.
+
+For each objective row: label + a big + button that increments a counter for the current session date.
+
+Show current count number inline; decrement “–” on long-press (or a small – button).
+
+Optional per-student Notes field for the session.
+
+Save persists summed counts as events(count=… per objective) for that date.
+
+Outputs (copy-to-spreadsheet)
+
+Page “Reports”:
+
+Filters: date range (start/end), student (single or all).
+
+Table outputs:
+
+By Objective: columns [Date, Student, Objective, Count, Notes] (one row per objective per date).
+
+By Student Summary: [Student, Objective, Total Count, Start Date, End Date].
+
+Button Copy as TSV that converts the current table into a tab-separated string and places it on clipboard (ready to paste into Google Sheets). Also include Download CSV.
+
+iPad UX
+
+Big buttons (44px+ tap targets), sticky footer bar with Students & Objectives | Collect Data | Reports.
+
+No login/auth. All local.
+
+Performance & token control
+
+No ORM. Use raw SQL with parameterized queries.
+
+Minimal templates: Jinja2 with 2–3 small HTML files, or one template with conditionals.
+
+Keep JS inline and tiny (no build step). Use fetch() JSON endpoints for increment actions.
+
+Avoid heavy dependencies; only flask in requirements.txt.
+
+Routes (exact)
+
+GET / -> redirect to /collect
+
+GET /students -> manage students/objectives UI
+
+POST /students/add (first_name)
+
+POST /students/delete (student_id)
+
+POST /objectives/save (student_id, objectives_text) // newline-delimited
+
+POST /objectives/delete (objective_id)
+
+GET /collect -> picker UI (date + multi-select students)
+
+POST /event/increment (date, student_id, objective_id) -> returns new count
+
+POST /event/decrement (date, student_id, objective_id) -> returns new count
+
+POST /event/save_notes (date, student_id, notes)
+
+GET /report (start_date, end_date, student_id? type=by_objective|summary) -> HTML table
+
+GET /report.csv same filters -> CSV
+
+GET /report.tsv same filters -> text/tsv for clipboard (also expose a JS “Copy” button)
+
+Import helper (from your spreadsheet)
+
+Provide a small /admin/import_demo function (commented out by default) that accepts a pasted table with student names as column headers and objective text in the cells (like your “Database” sheet) and creates students/objectives accordingly. Keep it simple: ignore blanks, trim whitespace.
+
+Acceptance tests
+
+Add 3 sample students and 2 objectives each; record counts for today; verify reports show totals and copy buttons work.
+
+Ensure multi-select of 1–4 students works and counters are independent per objective.
+
+Ensure clipboard copy yields TSV that pastes cleanly into Google Sheets.
+
+Deliverables:
+
+app.py, templates/base.html, templates/students.html, templates/collect.html, templates/report.html, static/app.js (optional), requirements.txt (just flask). Keep each file short and readable.
