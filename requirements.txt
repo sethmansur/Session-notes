@@ -1,3 +1,11 @@
 flask
 openpyxl
 gunicorn
+flask-dance
+flask-login
+oauthlib
+pyjwt
+flask-sqlalchemy
+psycopg2-binary
+sqlalchemy
+werkzeug
