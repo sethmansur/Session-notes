@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h3>Import Spreadsheet Data</h3>
+    <p>This will analyze and import data from your Excel spreadsheet.</p>
+    
+    <div style="margin-bottom: 2rem;">
+        <h4>What will be imported:</h4>
+        <ul style="padding-left: 2rem; margin: 1rem 0;">
+            <li><strong>Database Tab:</strong> Students and their objectives</li>
+            <li><strong>Data Collection Tab:</strong> Structure analysis for enhanced data collection</li>
+            <li><strong>Other Tabs:</strong> Analysis for potential integration</li>
+        </ul>
+    </div>
+    
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <button class="btn btn-success" onclick="performImport()">Analyze & Import Spreadsheet</button>
+        <a href="/students" class="btn btn-secondary">Back to Students</a>
+    </div>
+    
+    <div id="import-results" style="margin-top: 2rem; display: none;">
+        <!-- Results will be shown here -->
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function performImport() {
+        const btn = event.target;
+        const resultsDiv = document.getElementById('import-results');
+        
+        setLoading(btn, true);
+        btn.textContent = 'Importing...';
+        
+        try {
+            const response = await fetch('/admin/import_spreadsheet', {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showResults(result);
+                showMessage('Import completed successfully!');
+                btn.textContent = 'Import Complete ✓';
+                btn.disabled = true;
+            } else {
+                showMessage(result.error || 'Import failed', 'error');
+                btn.textContent = 'Retry Import';
+            }
+        } catch (error) {
+            console.error('Import error:', error);
+            showMessage('Import failed: ' + error.message, 'error');
+            btn.textContent = 'Retry Import';
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+    
+    function showResults(result) {
+        const resultsDiv = document.getElementById('import-results');
+        
+        let html = '<div class="card" style="background: #f8f9fa;">';
+        html += '<h4>Import Results</h4>';
+        
+        // Show analysis
+        if (result.analysis) {
+            html += '<div style="margin-bottom: 1rem;"><strong>Spreadsheet Analysis:</strong></div>';
+            html += '<div style="display: grid; gap: 0.5rem; font-size: 0.9rem;">';
+            
+            Object.entries(result.analysis).forEach(([sheetName, info]) => {
+                html += `<div style="padding: 0.5rem; background: white; border-radius: 4px;">`;
+                html += `<strong>${sheetName}</strong>: ${info.dimensions}`;
+                if (info.headers && info.headers.length > 0) {
+                    const nonEmptyHeaders = info.headers.filter(h => h.trim());
+                    if (nonEmptyHeaders.length > 0) {
+                        html += `<br><small>Headers: ${nonEmptyHeaders.slice(0, 5).join(', ')}${nonEmptyHeaders.length > 5 ? '...' : ''}</small>`;
+                    }
+                }
+                html += `</div>`;
+            });
+            
+            html += '</div>';
+        }
+        
+        // Show import results
+        if (result.import_results && result.import_results.students) {
+            const students = result.import_results.students;
+            html += `<div style="margin-top: 1rem;"><strong>Students Imported:</strong></div>`;
+            html += `<div style="margin-bottom: 0.5rem;">Added ${students.students_added} new students, ${students.objectives_added} objectives</div>`;
+            
+            html += '<div style="display: grid; gap: 0.5rem; max-height: 300px; overflow-y: auto;">';
+            students.students.forEach(student => {
+                html += `<div style="padding: 0.5rem; background: white; border-radius: 4px; border-left: 4px solid #27ae60;">`;
+                html += `<strong>${student.name}</strong> - ${student.objectives_count} objectives`;
+                if (student.objectives && student.objectives.length > 0) {
+                    html += '<br><small style="color: #666;">Sample: ' + student.objectives.join(', ') + (student.objectives_count > student.objectives.length ? '...' : '') + '</small>';
+                }
+                html += `</div>`;
+            });
+            html += '</div>';
+        }
+        
+        // Show data collection analysis
+        if (result.import_results && result.import_results.data_collection_structure) {
+            const structure = result.import_results.data_collection_structure;
+            html += `<div style="margin-top: 1rem;"><strong>Data Collection Structure Found:</strong></div>`;
+            html += `<div style="margin-bottom: 0.5rem;">Headers: ${structure.headers.join(', ')}</div>`;
+            
+            if (structure.column_analysis) {
+                html += '<div style="font-size: 0.9rem; color: #666;">Column Analysis:</div>';
+                html += '<div style="display: grid; gap: 0.25rem; font-size: 0.8rem; max-height: 200px; overflow-y: auto;">';
+                Object.entries(structure.column_analysis).forEach(([header, analysis]) => {
+                    html += `<div>${header}: ${analysis.likely_purpose} (${analysis.suggested_type})</div>`;
+                });
+                html += '</div>';
+            }
+        }
+        
+        html += '</div>';
+        
+        html += '<div style="margin-top: 1rem; text-align: center;">';
+        html += '<a href="/students" class="btn">Go to Students & Objectives</a>';
+        html += '<a href="/collect" class="btn btn-success" style="margin-left: 0.5rem;">Start Data Collection</a>';
+        html += '</div>';
+        
+        resultsDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+    }
+</script>
+{% endblock %}

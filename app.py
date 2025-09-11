@@ -5,6 +5,7 @@ from datetime import datetime, date
 from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file
 import csv
 import io
+import openpyxl
 
 app = Flask(__name__)
 app.config['DATABASE'] = 'speech_therapy.db'
@@ -45,6 +46,8 @@ def init_db():
             student_id INTEGER NOT NULL,
             objective_id INTEGER NOT NULL,
             count INTEGER NOT NULL DEFAULT 0,
+            activity TEXT,
+            prompt_level TEXT,
             notes TEXT,
             FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
             FOREIGN KEY (student_id) REFERENCES students (id) ON DELETE CASCADE,
@@ -58,6 +61,17 @@ def init_db():
     conn.execute('CREATE INDEX IF NOT EXISTS idx_events_student_id ON events (student_id)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_events_objective_id ON events (objective_id)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_events_session_id ON events (session_id)')
+    
+    # Add new columns to existing events table if they don't exist
+    try:
+        conn.execute('ALTER TABLE events ADD COLUMN activity TEXT')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+        
+    try:
+        conn.execute('ALTER TABLE events ADD COLUMN prompt_level TEXT')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     
     conn.commit()
     conn.close()
@@ -262,6 +276,8 @@ def increment_event():
     date_str = data.get('date')
     student_id = data.get('student_id')
     objective_id = data.get('objective_id')
+    activity = data.get('activity', '')
+    prompt_level = data.get('prompt_level', '')
     
     if not all([date_str, student_id, objective_id]):
         return jsonify({'error': 'Missing required parameters'}), 400
@@ -281,15 +297,15 @@ def increment_event():
     if event:
         new_count = event['count'] + 1
         conn.execute('''
-            UPDATE events SET count = ? 
+            UPDATE events SET count = ?, activity = ?, prompt_level = ? 
             WHERE session_id = ? AND student_id = ? AND objective_id = ?
-        ''', (new_count, session_id, student_id, objective_id))
+        ''', (new_count, activity, prompt_level, session_id, student_id, objective_id))
     else:
         new_count = 1
         conn.execute('''
-            INSERT INTO events (session_id, student_id, objective_id, count)
-            VALUES (?, ?, ?, ?)
-        ''', (session_id, student_id, objective_id, new_count))
+            INSERT INTO events (session_id, student_id, objective_id, count, activity, prompt_level)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (session_id, student_id, objective_id, new_count, activity, prompt_level))
     
     conn.commit()
     conn.close()
@@ -633,6 +649,208 @@ def report_tsv():
     tsv_content = '\n'.join(lines)
     
     return tsv_content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
+@app.route('/admin/import_spreadsheet', methods=['GET', 'POST'])
+def import_spreadsheet():
+    """Import data from the Excel spreadsheet."""
+    if request.method == 'GET':
+        return render_template('import.html')
+    
+    try:
+        # For now, use the attached file directly
+        filename = 'attached_assets/Sam_Student_Dat_25-26_1757599841065.xlsx'
+        
+        if not os.path.exists(filename):
+            return jsonify({'error': 'Spreadsheet file not found'}), 400
+        
+        # Try loading the workbook with different parameters
+        try:
+            workbook = openpyxl.load_workbook(filename, data_only=True)
+        except Exception as e1:
+            print(f"Failed with data_only=True: {e1}")
+            try:
+                workbook = openpyxl.load_workbook(filename)
+            except Exception as e2:
+                print(f"Failed with default params: {e2}")
+                raise Exception(f"Could not load workbook: {e1}, {e2}")
+        
+        # Analyze all sheets first
+        analysis = analyze_workbook(workbook)
+        
+        # Import data from Database sheet if it exists
+        import_results = {}
+        if 'database' in [sheet.lower() for sheet in workbook.sheetnames]:
+            database_sheet_name = next(sheet for sheet in workbook.sheetnames if sheet.lower() == 'database')
+            import_results['students'] = import_database_sheet(workbook[database_sheet_name])
+        
+        # Analyze data collection sheet structure
+        data_collection_sheets = [sheet for sheet in workbook.sheetnames if 'data' in sheet.lower() and 'collection' in sheet.lower()]
+        if data_collection_sheets:
+            sheet_name = data_collection_sheets[0]
+            import_results['data_collection_structure'] = analyze_data_collection_sheet(workbook[sheet_name])
+        
+        workbook.close()
+        
+        return jsonify({
+            'success': True,
+            'analysis': analysis,
+            'import_results': import_results
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Import failed: {str(e)}'}), 500
+
+def analyze_workbook(workbook):
+    """Analyze the entire workbook structure."""
+    analysis = {}
+    
+    for sheet_name in workbook.sheetnames:
+        sheet = workbook[sheet_name]
+        
+        # Get basic sheet info with null checks
+        max_row = sheet.max_row or 0
+        max_col = sheet.max_column or 0
+        
+        sheet_info = {
+            'dimensions': f"{max_row} rows x {max_col} columns",
+            'sheet_name': sheet_name
+        }
+        
+        # Sample headers (first row)
+        headers = []
+        if max_row > 0 and max_col > 0:
+            for col in range(1, min(max_col + 1, 11)):  # First 10 columns
+                cell_value = sheet.cell(row=1, column=col).value
+                if cell_value:
+                    headers.append(str(cell_value).strip())
+                else:
+                    headers.append("")
+        
+        sheet_info['headers'] = headers
+        analysis[sheet_name] = sheet_info
+    
+    return analysis
+
+def import_database_sheet(sheet):
+    """Import student data from the Database sheet."""
+    results = {'students_added': 0, 'objectives_added': 0, 'students': []}
+    
+    conn = get_db()
+    max_col = sheet.max_column or 0
+    max_row = sheet.max_row or 0
+    
+    try:
+        # Assume first row contains student names as headers
+        student_columns = []
+        for col in range(1, max_col + 1):
+            header = sheet.cell(row=1, column=col).value
+            if header and str(header).strip():
+                student_name = str(header).strip()
+                student_columns.append((col, student_name))
+        
+        for col, student_name in student_columns:
+            try:
+                # Add student (ignore duplicates)
+                cursor = conn.execute('INSERT OR IGNORE INTO students (first_name) VALUES (?)', (student_name,))
+                if cursor.rowcount > 0:
+                    results['students_added'] += 1
+                
+                # Get student ID
+                student_row = conn.execute('SELECT id FROM students WHERE first_name = ?', (student_name,)).fetchone()
+                student_id = student_row['id']
+                
+                # Clear existing objectives for this student
+                conn.execute('DELETE FROM objectives WHERE student_id = ?', (student_id,))
+                
+                # Extract objectives from column
+                objectives = []
+                for row in range(2, max_row + 1):
+                    cell_value = sheet.cell(row=row, column=col).value
+                    if cell_value and str(cell_value).strip():
+                        objective_text = str(cell_value).strip()
+                        # Remove numbering if present (1., 2., etc.)
+                        import re
+                        objective_text = re.sub(r'^\d+\.\s*', '', objective_text)
+                        if objective_text:
+                            objectives.append(objective_text)
+                
+                # Insert objectives
+                for objective_text in objectives:
+                    conn.execute('INSERT INTO objectives (student_id, objective_text) VALUES (?, ?)',
+                               (student_id, objective_text))
+                    results['objectives_added'] += 1
+                
+                results['students'].append({
+                    'name': student_name,
+                    'objectives_count': len(objectives),
+                    'objectives': objectives[:5]  # First 5 for preview
+                })
+                
+            except Exception as e:
+                print(f"Error importing student {student_name}: {e}")
+                continue
+        
+        conn.commit()
+        
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+    
+    return results
+
+def analyze_data_collection_sheet(sheet):
+    """Analyze the data collection sheet to understand its structure."""
+    structure = {
+        'headers': [],
+        'sample_data': [],
+        'column_analysis': {}
+    }
+    
+    max_col = sheet.max_column or 0
+    max_row = sheet.max_row or 0
+    
+    # Get headers
+    for col in range(1, max_col + 1):
+        header = sheet.cell(row=1, column=col).value
+        if header:
+            structure['headers'].append(str(header).strip())
+        else:
+            structure['headers'].append(f"Column_{col}")
+    
+    # Get sample data (first 5 rows after header)
+    for row in range(2, min(7, max_row + 1)):
+        row_data = []
+        for col in range(1, max_col + 1):
+            cell_value = sheet.cell(row=row, column=col).value
+            if cell_value is not None:
+                row_data.append(str(cell_value))
+            else:
+                row_data.append("")
+        structure['sample_data'].append(row_data)
+    
+    # Analyze column types and purposes
+    for i, header in enumerate(structure['headers']):
+        header_lower = header.lower()
+        analysis = {'suggested_type': 'text', 'likely_purpose': 'data'}
+        
+        if any(term in header_lower for term in ['date', 'time']):
+            analysis['suggested_type'] = 'date'
+            analysis['likely_purpose'] = 'date'
+        elif any(term in header_lower for term in ['activity', 'task']):
+            analysis['likely_purpose'] = 'activity'
+        elif any(term in header_lower for term in ['data', 'score', 'count', 'result']):
+            analysis['likely_purpose'] = 'data'
+            analysis['suggested_type'] = 'number'
+        elif any(term in header_lower for term in ['prompt', 'cue', 'support']):
+            analysis['likely_purpose'] = 'prompt_level'
+        elif any(term in header_lower for term in ['note', 'comment']):
+            analysis['likely_purpose'] = 'notes'
+        
+        structure['column_analysis'][header] = analysis
+    
+    return structure
 
 if __name__ == '__main__':
     # Initialize database on startup

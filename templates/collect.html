@@ -102,20 +102,34 @@
                 
                 <div class="objectives-grid" style="display: grid; gap: 0.75rem;">
                     ${studentData.objectives.map(objective => `
-                        <div class="objective-row" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px;">
-                            <div class="objective-text" style="flex: 1; font-size: 0.95rem;">
+                        <div class="objective-row" style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px;">
+                            <div class="objective-text" style="font-size: 0.95rem; font-weight: 500; margin-bottom: 0.5rem;">
                                 ${objective.text}
                             </div>
-                            <div class="counter-controls" style="display: flex; align-items: center; gap: 0.5rem;">
-                                <button class="btn btn-secondary btn-small decrement-btn" 
-                                        onclick="decrementCount(${selectedStudent.id}, ${objective.id})"
-                                        style="width: 40px; height: 40px; font-size: 18px; font-weight: bold;">−</button>
-                                <div class="count-display" 
-                                     id="count-${selectedStudent.id}-${objective.id}"
-                                     style="min-width: 40px; text-align: center; font-size: 1.2rem; font-weight: bold; color: #2c3e50;">0</div>
-                                <button class="btn btn-success increment-btn" 
-                                        onclick="incrementCount(${selectedStudent.id}, ${objective.id})"
-                                        style="width: 50px; height: 50px; font-size: 24px; font-weight: bold;">+</button>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="activity-${selectedStudent.id}-${objective.id}" 
+                                       placeholder="Activity" 
+                                       style="flex: 1; min-width: 120px; padding: 8px; font-size: 0.9rem; border: 1px solid #ccc; border-radius: 4px;">
+                                <select id="prompt-${selectedStudent.id}-${objective.id}" 
+                                        style="min-width: 100px; padding: 8px; font-size: 0.9rem; border: 1px solid #ccc; border-radius: 4px;">
+                                    <option value="">Prompt</option>
+                                    <option value="I">Independent</option>
+                                    <option value="V">Verbal</option>
+                                    <option value="G">Gestural</option>
+                                    <option value="P">Physical</option>
+                                    <option value="M">Max Support</option>
+                                </select>
+                                <div class="counter-controls" style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <button class="btn btn-secondary btn-small decrement-btn" 
+                                            onclick="decrementCount(${selectedStudent.id}, ${objective.id}, this)"
+                                            style="width: 40px; height: 40px; font-size: 18px; font-weight: bold;">−</button>
+                                    <div class="count-display" 
+                                         id="count-${selectedStudent.id}-${objective.id}"
+                                         style="min-width: 40px; text-align: center; font-size: 1.2rem; font-weight: bold; color: #2c3e50;">0</div>
+                                    <button class="btn btn-success increment-btn" 
+                                            onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)"
+                                            style="width: 50px; height: 50px; font-size: 24px; font-weight: bold;">+</button>
+                                </div>
                             </div>
                         </div>
                     `).join('')}
@@ -174,9 +188,13 @@
         }
     }
     
-    async function incrementCount(studentId, objectiveId) {
+    async function incrementCount(studentId, objectiveId, btn) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
-        const btn = event.target;
+        const activityInput = document.getElementById(`activity-${studentId}-${objectiveId}`);
+        const promptSelect = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        
+        const activity = activityInput ? activityInput.value.trim() : '';
+        const promptLevel = promptSelect ? promptSelect.value : '';
         
         setLoading(btn, true);
         
@@ -189,7 +207,9 @@
                 body: JSON.stringify({
                     date: sessionDate,
                     student_id: studentId,
-                    objective_id: objectiveId
+                    objective_id: objectiveId,
+                    activity: activity,
+                    prompt_level: promptLevel
                 })
             });
             
@@ -213,15 +233,13 @@
         }
     }
     
-    async function decrementCount(studentId, objectiveId) {
+    async function decrementCount(studentId, objectiveId, btn) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
         const currentCount = parseInt(countElement.textContent);
         
         if (currentCount <= 0) {
             return; // Can't go below 0
         }
-        
-        const btn = event.target;
         setLoading(btn, true);
         
         try {
