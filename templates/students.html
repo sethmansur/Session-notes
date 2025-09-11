@@ -14,7 +14,7 @@
                 <a href="/download/bulk-upload-template" class="btn btn-secondary" style="text-decoration: none;">
                     📥 Download Template
                 </a>
-                <a href="/admin/import_spreadsheet" class="btn btn-primary" style="text-decoration: none;">
+                <a href="/app/admin/import_spreadsheet" class="btn btn-primary" style="text-decoration: none;">
                     📤 Upload Data
                 </a>
             </div>
@@ -464,7 +464,7 @@
         const studentIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.studentId).join(',');
         const printDate = document.getElementById('print-date').value || new Date().toISOString().split('T')[0];
         
-        const printUrl = `/print/sheet?student_ids=${studentIds}&date=${printDate}&boxes=10&auto_print=true`;
+        const printUrl = `/app/print/sheet?student_ids=${studentIds}&date=${printDate}&boxes=10&auto_print=true`;
         
         // Open in new window/tab for printing
         window.open(printUrl, '_blank', 'width=800,height=600');

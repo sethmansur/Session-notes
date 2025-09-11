@@ -1,7 +1,7 @@
 modules = ["python-3.11", "postgresql-16"]
 [agent]
 expertMode = true
-integrations = ["python_database:1.0.0", "python_log_in_with_replit:1.0.0"]
+integrations = ["python_database:1.0.0", "python_log_in_with_replit:1.0.0", "flask_stripe:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
@@ -37,10 +37,6 @@ externalPort = 80
 [[ports]]
 localPort = 5001
 externalPort = 3001
-
-[[ports]]
-localPort = 38057
-externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"

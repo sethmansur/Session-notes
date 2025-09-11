@@ -1,0 +1,42 @@
+You are a senior full-stack engineer building a production-ready SaaS on Replit.
+
+PRODUCT
+- Product name: SessionNotes
+- Audience: SLPs, OTs, PTs, and related therapists
+- Core value: one-tap session data capture tied to objectives, instant reporting, and printable exports when devices would distract clients.
+
+TASKS
+1) Branding & Structure
+   - Set app title = "SessionNotes".
+   - Add <title>, meta description, and Open Graph tags.
+   - Include a simple logo lockup "SessionNotes" (text logo) and a favicon.
+   - Create a public marketing page at route "/" and app area at "/app".
+   - Use a clean, accessible UI (large tap targets, high contrast, responsive on iPad).
+
+2) Public Marketing Page ("/")
+   - Hero with headline: "SessionNotes — Tap. Track. Done."
+   - Subhead: "Lightning-fast session data for SLP/OT/PT. One tap per behavior. Instant reports. Easy printouts."
+   - CTA buttons: "Start Free Trial" (route to /signup) and "See Demo" (opens modal with demo GIF/steps).
+   - Sections:
+     a) How it works (3 steps): Select client → Tap during session → Export report/print.
+     b) Features grid (Objectives-linked tracking, Group sessions (1–4 clients), One-tap counters, Date-range reports, PDF/print-friendly, Offline-ready workflows with quick printable sheets).
+     c) For disciplines: SLP, OT, PT, school-based and private practice.
+     d) Trust & privacy: Clear language about privacy best practices without claiming HIPAA compliance; link to a placeholder “Privacy & Data Practices” page.
+     e) Pricing teaser (Starter, Pro, Team) with a “Start Free Trial” button.
+     f) Footer with links: Pricing, Privacy, Terms, Support.
+
+3) App Area ("/app")
+   - Authenticated dashboard: Client list, Objectives library, Quick Session view.
+   - Quick Session: Pick 1–4 clients, display each client’s objectives with one-tap +/- counters, timestamped notes, and end-session “Generate Report”.
+   - Reports: Export to PDF and CSV; printable layout with clinic header and signature line.
+   - Offline-friendly print: "Print Data Sheet" creates a minimal one-page grid by client/objective for manual tallying.
+
+4) Auth & Paywall
+   - Add email/password auth (e.g., Flask/FastAPI + JWT or Next.js + simple session; choose stack you are fastest with on Replit).
+   - Integrate Stripe Checkout for subscriptions:
+     • Plans: starter_monthly ($9), pro_monthly ($19), team_monthly ($39 per seat).
+     • Create /api/checkout-session endpoint for a logged-in user to start Checkout.
+     • Store Stripe customer id on user record.
+     • Add /billing route to manage plan.
+   - Implement Stripe webhooks (/api/stripe/webhook) for `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`. Update user’s `plan`, `status`, and (if team) seat count.
+   - Gate app routes: Only

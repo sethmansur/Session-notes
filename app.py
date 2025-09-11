@@ -94,11 +94,30 @@ def get_or_create_session(date_str):
 
 @app.route('/')
 def index():
-    """Landing page - shows login for logged out users, redirects to collect for logged in users."""
-    if current_user.is_authenticated:
-        return redirect(url_for('collect'))
-    else:
-        return render_template('landing.html')
+    """Public marketing page for SessionNotes SaaS."""
+    return render_template('marketing.html')
+
+@app.route('/app')
+@require_login
+def app_dashboard():
+    """Authenticated app dashboard - redirects to collect page."""
+    return redirect(url_for('collect'))
+
+# Marketing site placeholder pages
+@app.route('/privacy')
+def privacy():
+    """Privacy & Data Practices page."""
+    return "<h1>Privacy & Data Practices</h1><p>Your client data is protected with industry-standard security practices.</p><p><a href='/'>&larr; Back to Home</a></p>"
+
+@app.route('/terms')
+def terms():
+    """Terms of Service page."""
+    return "<h1>Terms of Service</h1><p>Terms of service coming soon.</p><p><a href='/'>&larr; Back to Home</a></p>"
+
+@app.route('/support')
+def support():
+    """Support page."""
+    return "<h1>Support</h1><p>For support inquiries, please contact us.</p><p><a href='/'>&larr; Back to Home</a></p>"
 
 @app.route('/health')
 def health_check():
@@ -111,7 +130,7 @@ def health_check():
         app.logger.error(f"Health check failed: {str(e)}")
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
-@app.route('/students')
+@app.route('/app/students')
 @require_login
 def students():
     """Show students and objectives management page. Login required to protect client data."""
@@ -146,7 +165,7 @@ def students():
     
     return render_template('students.html', students=students)
 
-@app.route('/students/add', methods=['POST'])
+@app.route('/app/students/add', methods=['POST'])
 @require_login
 def add_student():
     """Add a new student."""
@@ -177,7 +196,7 @@ def add_student():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/students/delete', methods=['POST'])
+@app.route('/app/students/delete', methods=['POST'])
 @require_login
 def delete_student():
     """Delete a student and all their objectives/events."""
@@ -196,7 +215,7 @@ def delete_student():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/objectives/save', methods=['POST'])
+@app.route('/app/objectives/save', methods=['POST'])
 @require_login
 def save_objectives():
     """Save objectives for a student."""
@@ -234,7 +253,7 @@ def save_objectives():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/objectives/delete', methods=['POST'])
+@app.route('/app/objectives/delete', methods=['POST'])
 @require_login
 def delete_objective():
     """Delete a specific objective."""
@@ -253,7 +272,7 @@ def delete_objective():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/objective_items/save', methods=['POST'])
+@app.route('/app/objective_items/save', methods=['POST'])
 @require_login
 def save_objective_items():
     """Save items for a specific objective."""
@@ -293,7 +312,7 @@ def save_objective_items():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/objective_items/get/<int:objective_id>')
+@app.route('/app/objective_items/get/<int:objective_id>')
 @require_login
 def get_objective_items(objective_id):
     """Get items for a specific objective."""
@@ -304,7 +323,7 @@ def get_objective_items(objective_id):
     
     return jsonify({'items': items_list})
 
-@app.route('/objective_items/delete', methods=['POST'])
+@app.route('/app/objective_items/delete', methods=['POST'])
 @require_login
 def delete_objective_item():
     """Delete a specific objective item."""
@@ -323,7 +342,7 @@ def delete_objective_item():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/collect')
+@app.route('/app/collect')
 @require_login
 def collect():
     """Show data collection page. Login required to protect client data."""
@@ -359,7 +378,7 @@ def collect():
     today = date.today().isoformat()
     return render_template('collect.html', students=students, today=today)
 
-@app.route('/event/increment', methods=['POST'])
+@app.route('/app/event/increment', methods=['POST'])
 @require_login
 def increment_event():
     """Increment count for an objective on a date."""
@@ -406,7 +425,7 @@ def increment_event():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/event/decrement', methods=['POST'])
+@app.route('/app/event/decrement', methods=['POST'])
 @require_login
 def decrement_event():
     """Decrement count for an objective on a date."""
@@ -443,7 +462,7 @@ def decrement_event():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/event/save_notes', methods=['POST'])
+@app.route('/app/event/save_notes', methods=['POST'])
 @require_login
 def save_notes():
     """Save notes for a student on a date."""
@@ -469,7 +488,7 @@ def save_notes():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/event/counts', methods=['GET'])
+@app.route('/app/event/counts', methods=['GET'])
 @require_login
 def get_counts():
     """Get existing counts for a date and students."""
@@ -502,7 +521,7 @@ def get_counts():
     
     return jsonify({'counts': counts, 'notes': notes})
 
-@app.route('/event/toggle_item_selection', methods=['POST'])
+@app.route('/app/event/toggle_item_selection', methods=['POST'])
 @require_login
 def toggle_item_selection():
     """Toggle selection of a specific objective item for an event."""
@@ -577,7 +596,7 @@ def toggle_item_selection():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@app.route('/event/selections', methods=['GET'])
+@app.route('/app/event/selections', methods=['GET'])
 @require_login
 def get_selections():
     """Get existing item selections for a date and students."""
@@ -630,7 +649,7 @@ def get_selections():
         'notes': notes
     })
 
-@app.route('/report')
+@app.route('/app/report')
 @require_login
 def report():
     """Show reports page with filtering."""
@@ -699,7 +718,7 @@ def report():
                          student_id=student_id,
                          report_type=report_type)
 
-@app.route('/report.csv')
+@app.route('/app/report.csv')
 @require_login
 def report_csv():
     """Export report as CSV."""
@@ -766,7 +785,7 @@ def report_csv():
                      as_attachment=True,
                      download_name=filename)
 
-@app.route('/report.tsv')
+@app.route('/app/report.tsv')
 @require_login
 def report_tsv():
     """Export report as TSV for clipboard."""
@@ -843,7 +862,7 @@ def download_bulk_upload_template():
         logging.error(f"Error downloading template: {e}")
         return jsonify({'error': 'Failed to download template'}), 500
 
-@app.route('/print/sheet')
+@app.route('/app/print/sheet')
 @require_login
 def print_data_collection_sheet():
     """Generate printable data collection sheet for offline therapy sessions"""
@@ -914,7 +933,7 @@ def print_data_collection_sheet():
         logging.error(f"Error generating print sheet: {e}")
         return f"Error generating print sheet: {str(e)}", 500
 
-@app.route('/admin/import_spreadsheet', methods=['GET', 'POST'])
+@app.route('/app/admin/import_spreadsheet', methods=['GET', 'POST'])
 @require_login
 def import_spreadsheet():
     """Import data from uploaded Excel spreadsheet."""

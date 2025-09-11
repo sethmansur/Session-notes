@@ -1,12 +1,20 @@
-# Speech Therapy Data Collection App
+# SessionNotes — Production SaaS for Therapy Data Collection
 
 ## Overview
 
-A lightweight, iPad-friendly web application designed for speech therapists to collect and track therapy session data. The app manages students, their IEP objectives, and session progress with a simple interface optimized for touch interactions. Built with Flask, SQLite, and vanilla JavaScript to ensure fast performance and minimal dependencies.
+SessionNotes is a production-ready SaaS platform designed for SLP, OT, PT, and related therapists to collect and track therapy session data. The platform provides lightning-fast session data capture with one-tap counters, instant reporting, and printable exports for offline workflows. Built with Flask, PostgreSQL, and optimized for professional therapy practices with subscription billing via Stripe.
 
-## User Preferences
+## Product Vision
 
-Preferred communication style: Simple, everyday language.
+**Core Value Proposition**: One-tap session data capture tied to objectives, instant reporting, and printable exports when devices would distract clients.
+
+**Target Audience**: 
+- Speech-Language Pathologists (SLP)
+- Occupational Therapists (OT) 
+- Physical Therapists (PT)
+- School-based and private practice therapists
+
+**User Preferences**: Clean, accessible UI with large tap targets, high contrast, and responsive design optimized for iPad usage in therapy sessions.
 
 ## System Architecture
 
