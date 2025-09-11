@@ -2,23 +2,84 @@
 
 {% block content %}
 <div class="card">
-    <h3>Import Spreadsheet Data</h3>
-    <p>This will analyze and import data from your Excel spreadsheet.</p>
+    <h3>Import Student & Objective Data</h3>
+    <p>Upload an Excel spreadsheet to bulk import student names and their therapy objectives.</p>
     
     <div style="margin-bottom: 2rem;">
-        <h4>What will be imported:</h4>
+        <h4>Required Format:</h4>
         <ul style="padding-left: 2rem; margin: 1rem 0;">
-            <li><strong>Database Tab:</strong> Students and their objectives</li>
-            <li><strong>Data Collection Tab:</strong> Structure analysis for enhanced data collection</li>
-            <li><strong>Other Tabs:</strong> Analysis for potential integration</li>
+            <li><strong>Sheet Name:</strong> Must be named "Database" (case-insensitive)</li>
+            <li><strong>Row 1:</strong> Student names as column headers</li>
+            <li><strong>Column Data:</strong> Each objective on a separate row under the student's column</li>
+            <li><strong>File Types:</strong> .xlsx, .xls Excel files only</li>
         </ul>
+        
+        <div style="padding: 1rem; background: #e8f4fd; border-radius: 8px; margin: 1rem 0;">
+            <strong>Example Format:</strong><br>
+            <table style="border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem;">
+                <tr style="background: #f0f0f0;">
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;"><strong>Sarah</strong></td>
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;"><strong>Michael</strong></td>
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;"><strong>Emma</strong></td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;">/s/ sounds</td>
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;">Articulation</td>
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;">Reading comprehension</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;">/r/ sounds</td>
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;">Phonemic awareness</td>
+                    <td style="border: 1px solid #ddd; padding: 0.5rem;">Vocabulary building</td>
+                </tr>
+            </table>
+        </div>
     </div>
     
-    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-        <button class="btn btn-success" onclick="performImport()">Analyze & Import Spreadsheet</button>
-        <a href="/students" class="btn btn-secondary">Back to Students</a>
-    </div>
+    <!-- File Upload Form -->
+    <form id="import-form" enctype="multipart/form-data" style="margin-bottom: 2rem;">
+        <div style="border: 2px dashed #ddd; border-radius: 8px; padding: 2rem; text-align: center; background: #fafafa;">
+            <div id="drop-zone" style="cursor: pointer;">
+                <input type="file" id="file-input" name="file" accept=".xlsx,.xls" style="display: none;" required>
+                <div id="file-display">
+                    <div style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;">📁</div>
+                    <div style="font-size: 1.2rem; margin-bottom: 0.5rem;">Click to choose file or drag & drop</div>
+                    <div style="color: #666; font-size: 0.9rem;">Excel files only (.xlsx, .xls)</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Selected File Info -->
+        <div id="file-info" style="display: none; margin: 1rem 0; padding: 1rem; background: #e8f5e8; border-radius: 8px;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div style="font-size: 2rem;">📄</div>
+                <div>
+                    <div id="file-name" style="font-weight: bold;"></div>
+                    <div id="file-size" style="color: #666; font-size: 0.9rem;"></div>
+                </div>
+                <button type="button" id="remove-file" style="background: none; border: none; color: #999; font-size: 1.5rem; cursor: pointer; margin-left: auto;">✕</button>
+            </div>
+        </div>
+        
+        <!-- Progress Bar -->
+        <div id="progress-container" style="display: none; margin: 1rem 0;">
+            <div style="margin-bottom: 0.5rem; font-weight: bold;" id="progress-text">Uploading...</div>
+            <div style="background: #e0e0e0; border-radius: 10px; overflow: hidden;">
+                <div id="progress-bar" style="background: #4CAF50; height: 20px; width: 0%; transition: width 0.3s ease;"></div>
+            </div>
+            <div style="margin-top: 0.5rem; font-size: 0.9rem; color: #666;" id="progress-details"></div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem;">
+            <button type="submit" id="import-btn" class="btn btn-success" disabled>
+                <span id="btn-text">Select File First</span>
+            </button>
+            <a href="/students" class="btn btn-secondary">Back to Students</a>
+        </div>
+    </form>
     
+    <!-- Import Results -->
     <div id="import-results" style="margin-top: 2rem; display: none;">
         <!-- Results will be shown here -->
     </div>
@@ -27,107 +88,259 @@
 
 {% block scripts %}
 <script>
-    async function performImport() {
-        const btn = event.target;
-        const resultsDiv = document.getElementById('import-results');
+    let selectedFile = null;
+    
+    // Initialize drag and drop
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileInfo = document.getElementById('file-info');
+    const importBtn = document.getElementById('import-btn');
+    const btnText = document.getElementById('btn-text');
+    
+    // Click to select file
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    // File input change
+    fileInput.addEventListener('change', handleFileSelect);
+    
+    // Drag and drop events
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#4CAF50';
+        dropZone.style.background = '#f0f8f0';
+    });
+    
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ddd';
+        dropZone.style.background = '#fafafa';
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ddd';
+        dropZone.style.background = '#fafafa';
         
-        setLoading(btn, true);
-        btn.textContent = 'Importing...';
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            handleFileSelect();
+        }
+    });
+    
+    // Remove file
+    document.getElementById('remove-file').addEventListener('click', clearFile);
+    
+    function handleFileSelect() {
+        const file = fileInput.files[0];
+        if (!file) return;
+        
+        // Validate file type
+        const allowedTypes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+            'application/vnd.ms-excel' // .xls
+        ];
+        
+        if (!allowedTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+            showMessage('Please select a valid Excel file (.xlsx or .xls)', 'error');
+            clearFile();
+            return;
+        }
+        
+        // Check file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            showMessage('File too large. Please select a file smaller than 10MB.', 'error');
+            clearFile();
+            return;
+        }
+        
+        selectedFile = file;
+        showFileInfo(file);
+        enableImportButton();
+    }
+    
+    function showFileInfo(file) {
+        document.getElementById('file-name').textContent = file.name;
+        document.getElementById('file-size').textContent = formatFileSize(file.size);
+        fileInfo.style.display = 'block';
+        dropZone.style.display = 'none';
+    }
+    
+    function clearFile() {
+        selectedFile = null;
+        fileInput.value = '';
+        fileInfo.style.display = 'none';
+        dropZone.style.display = 'block';
+        disableImportButton();
+        hideProgress();
+    }
+    
+    function enableImportButton() {
+        importBtn.disabled = false;
+        importBtn.className = 'btn btn-success';
+        btnText.textContent = 'Import Data';
+    }
+    
+    function disableImportButton() {
+        importBtn.disabled = true;
+        importBtn.className = 'btn btn-secondary';
+        btnText.textContent = 'Select File First';
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    function showProgress(text = 'Processing...') {
+        document.getElementById('progress-container').style.display = 'block';
+        document.getElementById('progress-text').textContent = text;
+        document.getElementById('progress-details').textContent = '';
+    }
+    
+    function updateProgress(percent, details = '') {
+        document.getElementById('progress-bar').style.width = percent + '%';
+        document.getElementById('progress-details').textContent = details;
+    }
+    
+    function hideProgress() {
+        document.getElementById('progress-container').style.display = 'none';
+        document.getElementById('progress-bar').style.width = '0%';
+    }
+    
+    // Form submission
+    document.getElementById('import-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        if (!selectedFile) {
+            showMessage('Please select a file first', 'error');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        
+        // Disable form and show progress
+        importBtn.disabled = true;
+        btnText.textContent = 'Importing...';
+        showProgress('Uploading file...');
+        updateProgress(10);
         
         try {
+            updateProgress(30, 'Analyzing spreadsheet structure...');
+            
             const response = await fetch('/admin/import_spreadsheet', {
-                method: 'POST'
+                method: 'POST',
+                body: formData
             });
+            
+            updateProgress(60, 'Processing student data...');
             
             const result = await response.json();
             
+            updateProgress(90, 'Finalizing import...');
+            
             if (result.success) {
-                showResults(result);
-                showMessage('Import completed successfully!');
-                btn.textContent = 'Import Complete ✓';
-                btn.disabled = true;
+                updateProgress(100, 'Import completed successfully!');
+                setTimeout(() => {
+                    hideProgress();
+                    showResults(result);
+                    showMessage('Import completed successfully!', 'success');
+                    btnText.textContent = 'Import Complete ✓';
+                    importBtn.className = 'btn btn-success';
+                }, 500);
             } else {
+                hideProgress();
                 showMessage(result.error || 'Import failed', 'error');
-                btn.textContent = 'Retry Import';
+                enableImportButton();
             }
         } catch (error) {
             console.error('Import error:', error);
+            hideProgress();
             showMessage('Import failed: ' + error.message, 'error');
-            btn.textContent = 'Retry Import';
-        } finally {
-            setLoading(btn, false);
+            enableImportButton();
         }
-    }
+    });
     
     function showResults(result) {
         const resultsDiv = document.getElementById('import-results');
         
-        let html = '<div class="card" style="background: #f8f9fa;">';
-        html += '<h4>Import Results</h4>';
+        let html = '<div class="card" style="background: #f8f9fa; border: 1px solid #e9ecef;">';
+        html += '<h4 style="color: #27ae60; margin-bottom: 1rem;">✓ Import Results</h4>';
         
         // Show analysis
         if (result.analysis) {
-            html += '<div style="margin-bottom: 1rem;"><strong>Spreadsheet Analysis:</strong></div>';
-            html += '<div style="display: grid; gap: 0.5rem; font-size: 0.9rem;">';
+            html += '<div style="margin-bottom: 1.5rem;">';
+            html += '<h5>📊 Spreadsheet Analysis</h5>';
+            html += '<div style="display: grid; gap: 0.75rem;">';
             
             Object.entries(result.analysis).forEach(([sheetName, info]) => {
-                html += `<div style="padding: 0.5rem; background: white; border-radius: 4px;">`;
+                html += `<div style="padding: 0.75rem; background: white; border-radius: 6px; border-left: 4px solid #3498db;">`;
                 html += `<strong>${sheetName}</strong>: ${info.dimensions}`;
                 if (info.headers && info.headers.length > 0) {
                     const nonEmptyHeaders = info.headers.filter(h => h.trim());
                     if (nonEmptyHeaders.length > 0) {
-                        html += `<br><small>Headers: ${nonEmptyHeaders.slice(0, 5).join(', ')}${nonEmptyHeaders.length > 5 ? '...' : ''}</small>`;
+                        html += `<br><small style="color: #666;">Headers: ${nonEmptyHeaders.slice(0, 5).join(', ')}${nonEmptyHeaders.length > 5 ? '...' : ''}</small>`;
                     }
                 }
                 html += `</div>`;
             });
             
-            html += '</div>';
+            html += '</div></div>';
         }
         
         // Show import results
         if (result.import_results && result.import_results.students) {
             const students = result.import_results.students;
-            html += `<div style="margin-top: 1rem;"><strong>Students Imported:</strong></div>`;
-            html += `<div style="margin-bottom: 0.5rem;">Added ${students.students_added} new students, ${students.objectives_added} objectives</div>`;
+            html += '<div style="margin-bottom: 1.5rem;">';
+            html += '<h5>👥 Students Imported</h5>';
+            html += `<div style="margin-bottom: 1rem; padding: 0.75rem; background: #d4edda; border-radius: 6px; border-left: 4px solid #27ae60;">`;
+            html += `<strong>Added:</strong> ${students.students_added} new students, ${students.objectives_added} objectives`;
+            html += `</div>`;
             
-            html += '<div style="display: grid; gap: 0.5rem; max-height: 300px; overflow-y: auto;">';
-            students.students.forEach(student => {
-                html += `<div style="padding: 0.5rem; background: white; border-radius: 4px; border-left: 4px solid #27ae60;">`;
-                html += `<strong>${student.name}</strong> - ${student.objectives_count} objectives`;
-                if (student.objectives && student.objectives.length > 0) {
-                    html += '<br><small style="color: #666;">Sample: ' + student.objectives.join(', ') + (student.objectives_count > student.objectives.length ? '...' : '') + '</small>';
-                }
-                html += `</div>`;
-            });
+            if (students.students && students.students.length > 0) {
+                html += '<div style="display: grid; gap: 0.5rem; max-height: 300px; overflow-y: auto;">';
+                students.students.forEach(student => {
+                    html += `<div style="padding: 0.75rem; background: white; border-radius: 6px; border-left: 4px solid #27ae60;">`;
+                    html += `<div style="font-weight: bold; margin-bottom: 0.25rem;">${student.name}</div>`;
+                    html += `<div style="color: #666; font-size: 0.9rem;">${student.objectives_count} objectives`;
+                    if (student.objectives && student.objectives.length > 0) {
+                        html += '<br><small>Sample: ' + student.objectives.slice(0, 3).join(', ') + (student.objectives_count > 3 ? '...' : '') + '</small>';
+                    }
+                    html += `</div></div>`;
+                });
+                html += '</div>';
+            }
             html += '</div>';
         }
         
         // Show data collection analysis
         if (result.import_results && result.import_results.data_collection_structure) {
             const structure = result.import_results.data_collection_structure;
-            html += `<div style="margin-top: 1rem;"><strong>Data Collection Structure Found:</strong></div>`;
-            html += `<div style="margin-bottom: 0.5rem;">Headers: ${structure.headers.join(', ')}</div>`;
-            
-            if (structure.column_analysis) {
-                html += '<div style="font-size: 0.9rem; color: #666;">Column Analysis:</div>';
-                html += '<div style="display: grid; gap: 0.25rem; font-size: 0.8rem; max-height: 200px; overflow-y: auto;">';
-                Object.entries(structure.column_analysis).forEach(([header, analysis]) => {
-                    html += `<div>${header}: ${analysis.likely_purpose} (${analysis.suggested_type})</div>`;
-                });
-                html += '</div>';
-            }
+            html += '<div style="margin-bottom: 1.5rem;">';
+            html += '<h5>📋 Data Collection Structure</h5>';
+            html += `<div style="padding: 0.75rem; background: white; border-radius: 6px; border-left: 4px solid #f39c12;">`;
+            html += `<strong>Headers found:</strong> ${structure.headers.join(', ')}</div>`;
+            html += '</div>';
         }
         
         html += '</div>';
         
-        html += '<div style="margin-top: 1rem; text-align: center;">';
-        html += '<a href="/students" class="btn">Go to Students & Objectives</a>';
-        html += '<a href="/collect" class="btn btn-success" style="margin-left: 0.5rem;">Start Data Collection</a>';
+        // Action buttons
+        html += '<div style="margin-top: 1.5rem; text-align: center; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">';
+        html += '<a href="/students" class="btn btn-primary">📚 View Students & Objectives</a>';
+        html += '<a href="/collect" class="btn btn-success">🎯 Start Data Collection</a>';
+        html += '<button onclick="location.reload()" class="btn btn-secondary">📥 Import Another File</button>';
         html += '</div>';
         
         resultsDiv.innerHTML = html;
         resultsDiv.style.display = 'block';
+        
+        // Scroll to results
+        resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 </script>
 {% endblock %}

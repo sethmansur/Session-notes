@@ -818,52 +818,115 @@ def report_tsv():
 @app.route('/admin/import_spreadsheet', methods=['GET', 'POST'])
 @require_login
 def import_spreadsheet():
-    """Import data from the Excel spreadsheet."""
+    """Import data from uploaded Excel spreadsheet."""
     if request.method == 'GET':
         return render_template('import.html')
     
     try:
-        # For now, use the attached file directly
-        filename = 'attached_assets/Sam_Student_Dat_25-26_1757599841065.xlsx'
+        # Check if file was uploaded
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
         
-        if not os.path.exists(filename):
-            return jsonify({'error': 'Spreadsheet file not found'}), 400
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
         
-        # Try loading the workbook with different parameters
+        # Validate file type
+        allowed_extensions = {'.xlsx', '.xls'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            return jsonify({'error': 'Invalid file type. Please upload an Excel file (.xlsx or .xls)'}), 400
+        
+        # Validate file size (10MB limit)
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()
+        file.seek(0)  # Reset to beginning
+        if file_size > 10 * 1024 * 1024:  # 10MB
+            return jsonify({'error': 'File too large. Please upload a file smaller than 10MB.'}), 400
+        
+        # Create temp directory if it doesn't exist
+        temp_dir = 'temp_uploads'
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Save uploaded file temporarily with safe filename
+        import time
+        import uuid
+        safe_filename = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{file.filename}"
+        temp_filepath = os.path.join(temp_dir, safe_filename)
+        
         try:
-            workbook = openpyxl.load_workbook(filename, data_only=True)
-        except Exception as e1:
-            print(f"Failed with data_only=True: {e1}")
+            file.save(temp_filepath)
+            logging.info(f"File uploaded successfully: {safe_filename}")
+            
+            # Try loading the workbook with different parameters
+            workbook = None
             try:
-                workbook = openpyxl.load_workbook(filename)
-            except Exception as e2:
-                print(f"Failed with default params: {e2}")
-                raise Exception(f"Could not load workbook: {e1}, {e2}")
-        
-        # Analyze all sheets first
-        analysis = analyze_workbook(workbook)
-        
-        # Import data from Database sheet if it exists
-        import_results = {}
-        if 'database' in [sheet.lower() for sheet in workbook.sheetnames]:
-            database_sheet_name = next(sheet for sheet in workbook.sheetnames if sheet.lower() == 'database')
-            import_results['students'] = import_database_sheet(workbook[database_sheet_name])
-        
-        # Analyze data collection sheet structure
-        data_collection_sheets = [sheet for sheet in workbook.sheetnames if 'data' in sheet.lower() and 'collection' in sheet.lower()]
-        if data_collection_sheets:
-            sheet_name = data_collection_sheets[0]
-            import_results['data_collection_structure'] = analyze_data_collection_sheet(workbook[sheet_name])
-        
-        workbook.close()
-        
-        return jsonify({
-            'success': True,
-            'analysis': analysis,
-            'import_results': import_results
-        })
+                workbook = openpyxl.load_workbook(temp_filepath, data_only=True)
+                logging.info("Workbook loaded with data_only=True")
+            except Exception as e1:
+                logging.warning(f"Failed with data_only=True: {e1}")
+                try:
+                    workbook = openpyxl.load_workbook(temp_filepath)
+                    logging.info("Workbook loaded with default parameters")
+                except Exception as e2:
+                    logging.error(f"Failed with default params: {e2}")
+                    raise Exception(f"Could not load Excel file. Please ensure it's a valid Excel file (.xlsx or .xls). Error details: {e2}")
+            
+            if not workbook:
+                raise Exception("Failed to load workbook")
+            
+            # Analyze all sheets first
+            analysis = analyze_workbook(workbook)
+            logging.info(f"Workbook analysis completed. Found sheets: {list(analysis.keys())}")
+            
+            # Import data from Database sheet if it exists
+            import_results = {}
+            database_sheets = [sheet for sheet in workbook.sheetnames if sheet.lower() == 'database']
+            
+            if database_sheets:
+                database_sheet_name = database_sheets[0]
+                logging.info(f"Processing Database sheet: {database_sheet_name}")
+                import_results['students'] = import_database_sheet(workbook[database_sheet_name])
+            else:
+                # Look for any sheet that might contain student data
+                potential_sheets = [sheet for sheet in workbook.sheetnames 
+                                  if any(keyword in sheet.lower() for keyword in ['student', 'data', 'main', 'sheet1'])]
+                if potential_sheets:
+                    logging.info(f"No 'Database' sheet found, trying sheet: {potential_sheets[0]}")
+                    import_results['students'] = import_database_sheet(workbook[potential_sheets[0]])
+                else:
+                    logging.warning("No suitable sheet found for student data import")
+                    return jsonify({'error': 'No "Database" sheet found. Please ensure your Excel file has a sheet named "Database" containing student data.'}), 400
+            
+            # Analyze data collection sheet structure
+            data_collection_sheets = [sheet for sheet in workbook.sheetnames 
+                                    if 'data' in sheet.lower() and 'collection' in sheet.lower()]
+            if data_collection_sheets:
+                sheet_name = data_collection_sheets[0]
+                logging.info(f"Analyzing data collection sheet: {sheet_name}")
+                import_results['data_collection_structure'] = analyze_data_collection_sheet(workbook[sheet_name])
+            
+            workbook.close()
+            logging.info("Import process completed successfully")
+            
+            return jsonify({
+                'success': True,
+                'analysis': analysis,
+                'import_results': import_results,
+                'file_processed': file.filename
+            })
+            
+        finally:
+            # Clean up temporary file
+            try:
+                if os.path.exists(temp_filepath):
+                    os.remove(temp_filepath)
+                    logging.info(f"Temporary file cleaned up: {safe_filename}")
+            except Exception as cleanup_error:
+                logging.warning(f"Failed to cleanup temporary file: {cleanup_error}")
         
     except Exception as e:
+        logging.error(f"Import failed: {str(e)}")
         return jsonify({'error': f'Import failed: {str(e)}'}), 500
 
 def analyze_workbook(workbook):
