@@ -57,10 +57,7 @@ with app.app_context():
     db.create_all()
     logging.info("Database tables created")
 
-def get_db():
-    """Get database connection for SQLite operations"""
-    conn = sqlite3.connect('speech_therapy.db')
-    conn.execute('PRAGMA foreign_keys = ON')
+# Removed duplicate get_db function - using PostgreSQL through SQLAlchemy
     
     # Create tables
     conn.execute('''
@@ -149,11 +146,8 @@ def get_db():
     conn.close()
 
 def get_db():
-    """Get database connection."""
-    conn = sqlite3.connect(app.config['DATABASE'])
-    conn.execute('PRAGMA foreign_keys = ON')
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Get database connection using SQLAlchemy."""
+    return db.session
 
 def get_or_create_session(date_str):
     """Get or create a session for the given date."""
