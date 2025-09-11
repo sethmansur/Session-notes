@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Upgrade to SessionNotes{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px; margin: 0 auto; padding: 2rem;">
+    <div class="text-center" style="margin-bottom: 3rem;">
+        <h1 style="color: #2c3e50; margin-bottom: 1rem;">Upgrade Your SessionNotes Plan</h1>
+        {% if days_left > 0 %}
+        <div style="background: #e8f4f8; padding: 1rem; border-radius: 8px; margin-bottom: 2rem;">
+            <p style="margin: 0; color: #2c3e50;">
+                <strong>{{ days_left }} days left</strong> in your free trial
+            </p>
+        </div>
+        {% else %}
+        <div style="background: #ffeaa7; padding: 1rem; border-radius: 8px; margin-bottom: 2rem;">
+            <p style="margin: 0; color: #2d3436;">
+                <strong>Your free trial has ended.</strong> Choose a plan to continue using SessionNotes.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="pricing-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; margin-bottom: 3rem;">
+        <!-- Starter Plan -->
+        <div class="pricing-card" style="border: 2px solid #ddd; border-radius: 12px; padding: 2rem; text-align: center; background: white;">
+            <h3 style="color: #2c3e50; margin-bottom: 1rem;">Starter</h3>
+            <div style="margin-bottom: 2rem;">
+                <span style="font-size: 2.5rem; font-weight: bold; color: #2c3e50;">$9</span>
+                <span style="color: #666;">/month</span>
+            </div>
+            <ul style="list-style: none; padding: 0; margin-bottom: 2rem; text-align: left;">
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Up to 25 students</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Unlimited data collection sessions</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Printable data sheets</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ CSV/Excel export</li>
+                <li style="padding: 0.5rem 0;">✓ Email support</li>
+            </ul>
+            <button class="btn btn-primary" onclick="selectPlan('starter')" style="width: 100%; padding: 0.75rem; background: #007bff; color: white; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer;">Choose Starter</button>
+        </div>
+
+        <!-- Pro Plan -->
+        <div class="pricing-card popular" style="border: 2px solid #007bff; border-radius: 12px; padding: 2rem; text-align: center; background: white; position: relative;">
+            <div style="position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #007bff; color: white; padding: 0.25rem 1rem; border-radius: 4px; font-size: 0.875rem;">Most Popular</div>
+            <h3 style="color: #2c3e50; margin-bottom: 1rem;">Pro</h3>
+            <div style="margin-bottom: 2rem;">
+                <span style="font-size: 2.5rem; font-weight: bold; color: #2c3e50;">$19</span>
+                <span style="color: #666;">/month</span>
+            </div>
+            <ul style="list-style: none; padding: 0; margin-bottom: 2rem; text-align: left;">
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Up to 100 students</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Advanced reporting & analytics</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Custom objective templates</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Progress tracking charts</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Priority support</li>
+                <li style="padding: 0.5rem 0;">✓ Data backup & sync</li>
+            </ul>
+            <button class="btn btn-primary" onclick="selectPlan('pro')" style="width: 100%; padding: 0.75rem; background: #007bff; color: white; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer;">Choose Pro</button>
+        </div>
+
+        <!-- Team Plan -->
+        <div class="pricing-card" style="border: 2px solid #ddd; border-radius: 12px; padding: 2rem; text-align: center; background: white;">
+            <h3 style="color: #2c3e50; margin-bottom: 1rem;">Team</h3>
+            <div style="margin-bottom: 2rem;">
+                <span style="font-size: 2.5rem; font-weight: bold; color: #2c3e50;">$39</span>
+                <span style="color: #666;">/month</span>
+            </div>
+            <ul style="list-style: none; padding: 0; margin-bottom: 2rem; text-align: left;">
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Unlimited students</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Multi-therapist collaboration</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Team management dashboard</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ Advanced permissions</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">✓ White-label options</li>
+                <li style="padding: 0.5rem 0;">✓ Phone & chat support</li>
+            </ul>
+            <button class="btn btn-primary" onclick="selectPlan('team')" style="width: 100%; padding: 0.75rem; background: #007bff; color: white; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer;">Choose Team</button>
+        </div>
+    </div>
+
+    <div class="text-center" style="margin-top: 2rem;">
+        <p style="color: #666; font-size: 0.9rem;">
+            All plans include a secure, HIPAA-compliant platform with 99.9% uptime guarantee.
+        </p>
+        <p style="color: #666; font-size: 0.9rem;">
+            Need help choosing? <a href="/support" style="color: #007bff;">Contact our support team</a>
+        </p>
+    </div>
+</div>
+
+<script>
+async function selectPlan(planType) {
+    try {
+        const response = await fetch('/create-checkout-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ plan_type: planType })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.url) {
+            // Redirect to Stripe checkout
+            window.location.href = result.url;
+        } else {
+            alert('Unable to start checkout. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Unable to start checkout. Please try again.');
+    }
+}
+</script>
+{% endblock %}

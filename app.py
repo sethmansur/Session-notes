@@ -8,6 +8,7 @@ import io
 import openpyxl
 from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
+import stripe
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -25,6 +26,10 @@ else:
 
 # Configure file upload limits (10MB max)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+
+# Stripe configuration
+stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
+YOUR_DOMAIN = os.environ.get('REPLIT_DEV_DOMAIN') if os.environ.get('REPLIT_DEPLOYMENT') != '1' else os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else 'localhost:5000'
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
@@ -66,6 +71,24 @@ with app.app_context():
 
 # Database tables are managed by SQLAlchemy models in models.py
 
+def require_subscription(f):
+    """Decorator to require active subscription (trial or paid)"""
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # First require login
+        if not current_user.is_authenticated:
+            return redirect(url_for('replit_auth.login'))
+        
+        # Check if user has active subscription
+        if not current_user.has_active_subscription():
+            # Trial expired and no active subscription
+            return redirect(url_for('upgrade'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
 def get_or_create_session(date_str):
     """Get or create a session for the given date."""
     from datetime import datetime
@@ -98,10 +121,113 @@ def index():
     return render_template('marketing.html')
 
 @app.route('/app')
-@require_login
+@require_subscription
 def app_dashboard():
     """Authenticated app dashboard - redirects to collect page."""
     return redirect(url_for('collect'))
+
+# Subscription management routes
+@app.route('/upgrade')
+@require_login
+def upgrade():
+    """Upgrade page with subscription plans"""
+    days_left = 0
+    if current_user.subscription_status == 'trial':
+        days_left = current_user.days_left_in_trial()
+    
+    return render_template('upgrade.html', days_left=days_left)
+
+@app.route('/create-checkout-session', methods=['POST'])
+@require_login  
+def create_checkout_session():
+    """Create Stripe checkout session"""
+    if not stripe.api_key:
+        return jsonify({'error': 'Payment processing not configured'}), 500
+    
+    data = request.get_json()
+    plan_type = data.get('plan_type', 'starter')
+    
+    # Define price IDs for each plan (you'll need to create these in Stripe)
+    price_ids = {
+        'starter': os.environ.get('STRIPE_STARTER_PRICE_ID', 'price_starter'),
+        'pro': os.environ.get('STRIPE_PRO_PRICE_ID', 'price_pro'), 
+        'team': os.environ.get('STRIPE_TEAM_PRICE_ID', 'price_team')
+    }
+    
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            customer_email=current_user.email,
+            line_items=[{
+                'price': price_ids.get(plan_type, price_ids['starter']),
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url=f'https://{YOUR_DOMAIN}/app?success=true',
+            cancel_url=f'https://{YOUR_DOMAIN}/upgrade?canceled=true',
+            automatic_tax={'enabled': False},
+            metadata={
+                'user_id': current_user.id,
+                'plan_type': plan_type
+            }
+        )
+        return jsonify({'url': checkout_session.url})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/webhook/stripe', methods=['POST'])
+def handle_stripe_webhook():
+    """Handle Stripe webhook events"""
+    payload = request.get_data()
+    sig_header = request.headers.get('Stripe-Signature')
+    
+    if not stripe.api_key:
+        return '', 400
+    
+    endpoint_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, endpoint_secret
+        )
+    except ValueError:
+        return '', 400
+    except stripe.error.SignatureVerificationError:
+        return '', 400
+    
+    # Handle the event
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        handle_successful_payment(session)
+    elif event['type'] == 'invoice.payment_succeeded':
+        invoice = event['data']['object']
+        handle_successful_payment(invoice)
+    elif event['type'] == 'invoice.payment_failed':
+        invoice = event['data']['object']
+        handle_failed_payment(invoice)
+    
+    return '', 200
+
+def handle_successful_payment(session_or_invoice):
+    """Handle successful payment from Stripe"""
+    user_id = session_or_invoice.get('metadata', {}).get('user_id')
+    if not user_id:
+        return
+    
+    user = User.query.get(user_id)
+    if user:
+        user.subscription_status = 'active'
+        user.stripe_customer_id = session_or_invoice.get('customer')
+        if 'subscription' in session_or_invoice:
+            user.stripe_subscription_id = session_or_invoice['subscription']
+        db.session.commit()
+
+def handle_failed_payment(invoice):
+    """Handle failed payment from Stripe"""
+    customer_id = invoice.get('customer')
+    user = User.query.filter_by(stripe_customer_id=customer_id).first()
+    if user:
+        user.subscription_status = 'past_due'
+        db.session.commit()
 
 # Marketing site placeholder pages
 @app.route('/privacy')
@@ -131,7 +257,7 @@ def health_check():
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
 @app.route('/app/students')
-@require_login
+@require_subscription
 def students():
     """Show students and objectives management page. Login required to protect client data."""
     # Get default organization
@@ -343,7 +469,7 @@ def delete_objective_item():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/collect')
-@require_login
+@require_subscription
 def collect():
     """Show data collection page. Login required to protect client data."""
     # Get default organization
@@ -650,7 +776,7 @@ def get_selections():
     })
 
 @app.route('/app/report')
-@require_login
+@require_subscription
 def report():
     """Show reports page with filtering."""
     start_date = request.args.get('start_date', '')

@@ -1,7 +1,7 @@
 # models.py - Database models for speech therapy SaaS demo
 # Using PostgreSQL and SQLAlchemy for multi-tenant architecture
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
 from flask_dance.consumer.storage.sqla import OAuthConsumerMixin
 from flask_login import UserMixin
@@ -20,11 +20,37 @@ class User(UserMixin, db.Model):
     last_name = db.Column(db.String, nullable=True)
     profile_image_url = db.Column(db.String, nullable=True)
     
+    # Trial and subscription tracking
+    trial_start_date = db.Column(db.DateTime, default=datetime.now)
+    subscription_status = db.Column(db.String(20), default='trial')  # 'trial', 'active', 'past_due', 'canceled'
+    stripe_customer_id = db.Column(db.String)
+    stripe_subscription_id = db.Column(db.String)
+    plan_type = db.Column(db.String(20), default='starter')  # 'starter', 'pro', 'team'
+    
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Relationship to memberships
     memberships = db.relationship('Membership', back_populates='user', cascade='all, delete-orphan')
+    
+    def is_trial_active(self):
+        """Check if user's 7-day trial is still active"""
+        if self.subscription_status != 'trial':
+            return False
+        trial_end = self.trial_start_date + timedelta(days=7)
+        return datetime.now() < trial_end
+    
+    def days_left_in_trial(self):
+        """Calculate days remaining in trial"""
+        if self.subscription_status != 'trial':
+            return 0
+        trial_end = self.trial_start_date + timedelta(days=7)
+        remaining = trial_end - datetime.now()
+        return max(0, remaining.days)
+    
+    def has_active_subscription(self):
+        """Check if user has active access (trial or paid)"""
+        return self.is_trial_active() or self.subscription_status == 'active'
 
 class OAuth(OAuthConsumerMixin, db.Model):
     """OAuth token storage (required for Replit Auth)"""
