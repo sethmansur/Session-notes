@@ -365,6 +365,50 @@ def save_notes():
     
     return jsonify({'success': True})
 
+@app.route('/event/counts', methods=['GET'])
+def get_counts():
+    """Get existing counts for a date and students."""
+    date_str = request.args.get('date')
+    student_ids = request.args.getlist('student_id')
+    
+    if not date_str or not student_ids:
+        return jsonify({'error': 'Missing required parameters'}), 400
+    
+    conn = get_db()
+    
+    # Get session for this date
+    cursor = conn.execute('SELECT id FROM sessions WHERE date = ?', (date_str,))
+    session = cursor.fetchone()
+    
+    if not session:
+        conn.close()
+        return jsonify({'counts': {}})
+    
+    session_id = session['id']
+    
+    # Get all counts for this session and students
+    placeholders = ','.join(['?' for _ in student_ids])
+    query = f'''
+        SELECT student_id, objective_id, count, notes
+        FROM events 
+        WHERE session_id = ? AND student_id IN ({placeholders})
+    '''
+    
+    params = [session_id] + student_ids
+    events = conn.execute(query, params).fetchall()
+    conn.close()
+    
+    # Format response
+    counts = {}
+    notes = {}
+    for event in events:
+        key = f"{event['student_id']}-{event['objective_id']}"
+        counts[key] = event['count']
+        if event['notes']:
+            notes[str(event['student_id'])] = event['notes']
+    
+    return jsonify({'counts': counts, 'notes': notes})
+
 @app.route('/report')
 def report():
     """Show reports page with filtering."""
@@ -595,4 +639,4 @@ if __name__ == '__main__':
     init_db()
     
     # Run the app
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

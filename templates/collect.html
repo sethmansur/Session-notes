@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h3>Data Collection Setup</h3>
+    
+    <div class="grid grid-2">
+        <div class="form-group">
+            <label for="session-date">Session Date</label>
+            <input type="date" id="session-date" value="{{ today }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="student-multiselect">Select Students (1-4)</label>
+            <select id="student-multiselect" multiple size="6">
+                {% for student in students %}
+                <option value="{{ student.id }}">{{ student.first_name }}</option>
+                {% endfor %}
+            </select>
+            <small style="color: #666; font-size: 0.9rem;">Hold Ctrl/Cmd to select multiple students</small>
+        </div>
+    </div>
+    
+    <button class="btn btn-success" onclick="loadSelectedStudents()">Load Selected Students</button>
+</div>
+
+<div id="student-cards" style="margin-top: 1rem;">
+    <!-- Student cards will be loaded here -->
+</div>
+
+{% if not students %}
+<div class="card text-center">
+    <p style="color: #666; padding: 2rem;">No students found. Please add students and objectives first.</p>
+    <a href="/students" class="btn">Go to Students & Objectives</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let selectedStudents = [];
+    let sessionDate = '{{ today }}';
+    
+    // Update session date when changed
+    document.getElementById('session-date').addEventListener('change', function() {
+        sessionDate = this.value;
+        // Reload student cards to get counts for new date
+        if (selectedStudents.length > 0) {
+            loadSelectedStudents();
+        }
+    });
+    
+    function loadSelectedStudents() {
+        const select = document.getElementById('student-multiselect');
+        const selectedOptions = Array.from(select.selectedOptions);
+        
+        if (selectedOptions.length === 0) {
+            showMessage('Please select at least one student', 'error');
+            return;
+        }
+        
+        if (selectedOptions.length > 4) {
+            showMessage('Please select no more than 4 students', 'error');
+            return;
+        }
+        
+        selectedStudents = selectedOptions.map(option => ({
+            id: option.value,
+            name: option.text
+        }));
+        
+        sessionDate = document.getElementById('session-date').value;
+        
+        renderStudentCards();
+        showMessage(`Loaded ${selectedStudents.length} student(s) for ${sessionDate}`);
+    }
+    
+    function renderStudentCards() {
+        const container = document.getElementById('student-cards');
+        container.innerHTML = '';
+        
+        const studentsData = {{ students | tojson }};
+        
+        selectedStudents.forEach(selectedStudent => {
+            const studentData = studentsData.find(s => s.id == selectedStudent.id);
+            
+            if (!studentData || !studentData.objectives || studentData.objectives.length === 0) {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <h3>${selectedStudent.name}</h3>
+                    <p style="color: #666; text-align: center; padding: 1rem;">No objectives found for this student.</p>
+                `;
+                container.appendChild(card);
+                return;
+            }
+            
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `
+                <h3>${selectedStudent.name}</h3>
+                
+                <div class="objectives-grid" style="display: grid; gap: 0.75rem;">
+                    ${studentData.objectives.map(objective => `
+                        <div class="objective-row" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px;">
+                            <div class="objective-text" style="flex: 1; font-size: 0.95rem;">
+                                ${objective.text}
+                            </div>
+                            <div class="counter-controls" style="display: flex; align-items: center; gap: 0.5rem;">
+                                <button class="btn btn-secondary btn-small decrement-btn" 
+                                        onclick="decrementCount(${selectedStudent.id}, ${objective.id})"
+                                        style="width: 40px; height: 40px; font-size: 18px; font-weight: bold;">−</button>
+                                <div class="count-display" 
+                                     id="count-${selectedStudent.id}-${objective.id}"
+                                     style="min-width: 40px; text-align: center; font-size: 1.2rem; font-weight: bold; color: #2c3e50;">0</div>
+                                <button class="btn btn-success increment-btn" 
+                                        onclick="incrementCount(${selectedStudent.id}, ${objective.id})"
+                                        style="width: 50px; height: 50px; font-size: 24px; font-weight: bold;">+</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div class="notes-section" style="margin-top: 1rem;">
+                    <label for="notes-${selectedStudent.id}" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Session Notes</label>
+                    <textarea id="notes-${selectedStudent.id}" 
+                              placeholder="Optional notes for this session..."
+                              style="min-height: 80px;"
+                              onblur="saveNotes(${selectedStudent.id})"></textarea>
+                </div>
+            `;
+            
+            container.appendChild(card);
+        });
+        
+        // Load existing counts for this date
+        loadExistingCounts();
+    }
+    
+    async function loadExistingCounts() {
+        if (selectedStudents.length === 0) return;
+        
+        try {
+            const params = new URLSearchParams();
+            params.append('date', sessionDate);
+            selectedStudents.forEach(student => {
+                params.append('student_id', student.id);
+            });
+            
+            const response = await fetch(`/event/counts?${params.toString()}`);
+            const result = await response.json();
+            
+            if (result.counts) {
+                // Update count displays
+                Object.entries(result.counts).forEach(([key, count]) => {
+                    const countElement = document.getElementById(`count-${key}`);
+                    if (countElement) {
+                        countElement.textContent = count;
+                    }
+                });
+            }
+            
+            if (result.notes) {
+                // Update notes textareas
+                Object.entries(result.notes).forEach(([studentId, notes]) => {
+                    const notesElement = document.getElementById(`notes-${studentId}`);
+                    if (notesElement) {
+                        notesElement.value = notes;
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error loading existing counts:', error);
+        }
+    }
+    
+    async function incrementCount(studentId, objectiveId) {
+        const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
+        const btn = event.target;
+        
+        setLoading(btn, true);
+        
+        try {
+            const response = await fetch('/event/increment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    date: sessionDate,
+                    student_id: studentId,
+                    objective_id: objectiveId
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.count !== undefined) {
+                countElement.textContent = result.count;
+                // Brief visual feedback
+                countElement.style.transform = 'scale(1.2)';
+                setTimeout(() => {
+                    countElement.style.transform = 'scale(1)';
+                }, 150);
+            } else {
+                showMessage(result.error || 'Failed to increment count', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to increment count', 'error');
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+    
+    async function decrementCount(studentId, objectiveId) {
+        const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
+        const currentCount = parseInt(countElement.textContent);
+        
+        if (currentCount <= 0) {
+            return; // Can't go below 0
+        }
+        
+        const btn = event.target;
+        setLoading(btn, true);
+        
+        try {
+            const response = await fetch('/event/decrement', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    date: sessionDate,
+                    student_id: studentId,
+                    objective_id: objectiveId
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.count !== undefined) {
+                countElement.textContent = result.count;
+                // Brief visual feedback
+                countElement.style.transform = 'scale(0.8)';
+                setTimeout(() => {
+                    countElement.style.transform = 'scale(1)';
+                }, 150);
+            } else {
+                showMessage(result.error || 'Failed to decrement count', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to decrement count', 'error');
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+    
+    async function saveNotes(studentId) {
+        const notesTextarea = document.getElementById(`notes-${studentId}`);
+        const notes = notesTextarea.value.trim();
+        
+        try {
+            const response = await fetch('/event/save_notes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    date: sessionDate,
+                    student_id: studentId,
+                    notes: notes
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (!result.success) {
+                showMessage(result.error || 'Failed to save notes', 'error');
+            }
+            // Don't show success message for notes as it would be too frequent
+        } catch (error) {
+            console.error('Error saving notes:', error);
+        }
+    }
+    
+    // Add touch and hold for decrement button
+    let touchTimer;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add touch events for better mobile interaction
+        document.addEventListener('touchstart', function(e) {
+            if (e.target.classList.contains('decrement-btn')) {
+                touchTimer = setTimeout(() => {
+                    // Long press detected
+                    e.target.style.background = '#c0392b';
+                    // Could trigger decrement here if desired
+                }, 500);
+            }
+        });
+        
+        document.addEventListener('touchend', function(e) {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                if (e.target.classList.contains('decrement-btn')) {
+                    e.target.style.background = '';
+                }
+            }
+        });
+        
+        // Prevent zoom on double-tap for buttons
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function(e) {
+            const now = new Date().getTime();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    });
+</script>
+{% endblock %}

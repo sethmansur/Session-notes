@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h3>Reports & Export</h3>
+    
+    <form method="GET" class="grid grid-2">
+        <div class="form-group">
+            <label for="start_date">Start Date</label>
+            <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="end_date">End Date</label>
+            <input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="student_id">Student (optional)</label>
+            <select id="student_id" name="student_id">
+                <option value="">All Students</option>
+                {% for student in students %}
+                <option value="{{ student.id }}" {% if student.id|string == student_id %}selected{% endif %}>
+                    {{ student.first_name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="type">Report Type</label>
+            <select id="type" name="type">
+                <option value="by_objective" {% if report_type == 'by_objective' %}selected{% endif %}>
+                    By Objective (detailed)
+                </option>
+                <option value="summary" {% if report_type == 'summary' %}selected{% endif %}>
+                    Summary (totals)
+                </option>
+            </select>
+        </div>
+        
+        <div style="grid-column: span 2;">
+            <button type="submit" class="btn">Update Report</button>
+        </div>
+    </form>
+</div>
+
+{% if report_data %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3 style="margin: 0;">
+            {% if report_type == 'summary' %}Summary Report{% else %}Detailed Report{% endif %}
+            ({{ report_data|length }} records)
+        </h3>
+        
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-secondary btn-small" onclick="copyTableAsTSV()">
+                Copy as TSV
+            </button>
+            <a href="{{ url_for('report_csv', start_date=start_date, end_date=end_date, student_id=student_id, type=report_type) }}" 
+               class="btn btn-secondary btn-small">
+                Download CSV
+            </a>
+        </div>
+    </div>
+    
+    <div style="overflow-x: auto;">
+        <table id="report-table" style="width: 100%; border-collapse: collapse; background: white;">
+            <thead>
+                <tr style="background: #f8f9fa;">
+                    {% if report_type == 'summary' %}
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Student</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Objective</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Total Count</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Start Date</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">End Date</th>
+                    {% else %}
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Date</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Student</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Objective</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Count</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Notes</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report_data %}
+                <tr>
+                    {% if report_type == 'summary' %}
+                        <td style="padding: 12px; border: 1px solid #ddd;">{{ row.student }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd;">{{ row.objective }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{{ row.total_count }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ row.start_date }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ row.end_date }}</td>
+                    {% else %}
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ row.date }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd;">{{ row.student }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd;">{{ row.objective }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{{ row.count }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd;">{{ row.notes or '' }}</td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card text-center">
+    <p style="color: #666; padding: 2rem;">No data found for the selected criteria.</p>
+    <p style="color: #666;">Try adjusting the date range or selecting a different student.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function copyTableAsTSV() {
+        const table = document.getElementById('report-table');
+        if (!table) {
+            showMessage('No table to copy', 'error');
+            return;
+        }
+        
+        // Get current URL parameters to build TSV endpoint URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const tsvUrl = '/report.tsv?' + urlParams.toString();
+        
+        try {
+            const response = await fetch(tsvUrl);
+            if (!response.ok) {
+                throw new Error('Failed to fetch TSV data');
+            }
+            
+            const tsvData = await response.text();
+            await copyToClipboard(tsvData);
+        } catch (error) {
+            console.error('Error copying TSV:', error);
+            showMessage('Failed to copy table data', 'error');
+        }
+    }
+    
+    // Auto-submit form when filters change (for better UX)
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form');
+        const inputs = form.querySelectorAll('input, select');
+        
+        inputs.forEach(input => {
+            input.addEventListener('change', function() {
+                // Small delay to allow user to make multiple changes
+                clearTimeout(this.submitTimer);
+                this.submitTimer = setTimeout(() => {
+                    form.submit();
+                }, 500);
+            });
+        });
+    });
+</script>
+{% endblock %}

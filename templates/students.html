@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid grid-2">
+    <!-- Left side: Add student and paste objectives -->
+    <div class="card">
+        <h3>Add Student & Paste Objectives</h3>
+        
+        <div class="form-group">
+            <label for="student-name">Student First Name</label>
+            <input type="text" id="student-name" placeholder="Enter student name">
+        </div>
+        
+        <button class="btn btn-success mb-2" onclick="addStudent()">Add Student</button>
+        
+        <div class="form-group">
+            <label for="objectives-paste">Paste Objectives (one per line)</label>
+            <textarea id="objectives-paste" placeholder="Paste objectives here. Numbers like '1.' will be automatically removed.&#10;&#10;Example:&#10;1. Student will identify colors&#10;2. Student will count to 10&#10;3. Student will follow 2-step directions"></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="student-select">Select Student for Objectives</label>
+            <select id="student-select">
+                <option value="">Select a student...</option>
+                {% for student in students %}
+                <option value="{{ student.id }}">{{ student.first_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <button class="btn btn-success" onclick="saveObjectives()">Save Objectives</button>
+    </div>
+    
+    <!-- Right side: Student list and management -->
+    <div class="card">
+        <h3>Students & Their Objectives</h3>
+        
+        <div id="students-list">
+            {% if students %}
+                {% for student in students %}
+                <div class="student-item" data-student-id="{{ student.id }}">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h4 style="margin: 0; color: #2c3e50;">{{ student.first_name }}</h4>
+                        <button class="btn btn-danger btn-small" onclick="deleteStudent({{ student.id }}, '{{ student.first_name }}')">Delete</button>
+                    </div>
+                    
+                    <div class="objectives-edit" style="margin-bottom: 1rem;">
+                        <textarea class="objectives-text" data-student-id="{{ student.id }}" placeholder="Enter objectives, one per line">{% for objective in student.objectives %}{{ objective.text }}{% if not loop.last %}&#10;{% endif %}{% endfor %}</textarea>
+                        <button class="btn btn-small mt-1" onclick="saveStudentObjectives({{ student.id }})">Update Objectives</button>
+                    </div>
+                    
+                    {% if student.objectives %}
+                    <div class="objectives-list">
+                        <strong>Current Objectives:</strong>
+                        <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                            {% for objective in student.objectives %}
+                            <li style="margin-bottom: 0.25rem;">
+                                {{ objective.text }}
+                                <button class="btn btn-danger btn-small" style="margin-left: 0.5rem; padding: 4px 8px; font-size: 12px;" onclick="deleteObjective({{ objective.id }}, {{ student.id }})">×</button>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+                {% if not loop.last %}<hr style="margin: 1.5rem 0; border: 1px solid #eee;">{% endif %}
+                {% endfor %}
+            {% else %}
+                <p style="text-align: center; color: #666; padding: 2rem;">No students added yet. Add a student to get started!</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function addStudent() {
+        const nameInput = document.getElementById('student-name');
+        const name = nameInput.value.trim();
+        
+        if (!name) {
+            showMessage('Please enter a student name', 'error');
+            return;
+        }
+        
+        const btn = event.target;
+        setLoading(btn, true);
+        
+        try {
+            const formData = new FormData();
+            formData.append('first_name', name);
+            
+            const response = await fetch('/students/add', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage(`Student "${name}" added successfully!`);
+                nameInput.value = '';
+                // Reload page to show new student
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showMessage(result.error || 'Failed to add student', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to add student', 'error');
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+    
+    async function deleteStudent(studentId, studentName) {
+        if (!confirm(`Are you sure you want to delete "${studentName}" and all their objectives and data?`)) {
+            return;
+        }
+        
+        try {
+            const formData = new FormData();
+            formData.append('student_id', studentId);
+            
+            const response = await fetch('/students/delete', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage(`Student "${studentName}" deleted successfully!`);
+                // Remove the student item from the page
+                const studentItem = document.querySelector(`[data-student-id="${studentId}"]`);
+                if (studentItem) {
+                    studentItem.remove();
+                }
+                // Also remove from select dropdown
+                const option = document.querySelector(`#student-select option[value="${studentId}"]`);
+                if (option) {
+                    option.remove();
+                }
+            } else {
+                showMessage(result.error || 'Failed to delete student', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to delete student', 'error');
+        }
+    }
+    
+    async function saveObjectives() {
+        const studentSelect = document.getElementById('student-select');
+        const objectivesText = document.getElementById('objectives-paste');
+        
+        const studentId = studentSelect.value;
+        const objectives = objectivesText.value.trim();
+        
+        if (!studentId) {
+            showMessage('Please select a student', 'error');
+            return;
+        }
+        
+        const btn = event.target;
+        setLoading(btn, true);
+        
+        try {
+            const formData = new FormData();
+            formData.append('student_id', studentId);
+            formData.append('objectives_text', objectives);
+            
+            const response = await fetch('/objectives/save', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage('Objectives saved successfully!');
+                objectivesText.value = '';
+                // Reload page to show updated objectives
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showMessage(result.error || 'Failed to save objectives', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to save objectives', 'error');
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+    
+    async function saveStudentObjectives(studentId) {
+        const textarea = document.querySelector(`textarea[data-student-id="${studentId}"]`);
+        const objectives = textarea.value.trim();
+        
+        const btn = event.target;
+        setLoading(btn, true);
+        
+        try {
+            const formData = new FormData();
+            formData.append('student_id', studentId);
+            formData.append('objectives_text', objectives);
+            
+            const response = await fetch('/objectives/save', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage('Objectives updated successfully!');
+                // Reload page to show updated objectives
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showMessage(result.error || 'Failed to update objectives', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to update objectives', 'error');
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+    
+    async function deleteObjective(objectiveId, studentId) {
+        if (!confirm('Are you sure you want to delete this objective?')) {
+            return;
+        }
+        
+        try {
+            const formData = new FormData();
+            formData.append('objective_id', objectiveId);
+            
+            const response = await fetch('/objectives/delete', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage('Objective deleted successfully!');
+                // Reload page to show updated objectives
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showMessage(result.error || 'Failed to delete objective', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('Failed to delete objective', 'error');
+        }
+    }
+    
+    // Auto-select student when clicking on their objectives textarea
+    document.addEventListener('DOMContentLoaded', function() {
+        const studentSelect = document.getElementById('student-select');
+        const textareas = document.querySelectorAll('.objectives-text');
+        
+        textareas.forEach(textarea => {
+            textarea.addEventListener('focus', function() {
+                const studentId = this.getAttribute('data-student-id');
+                studentSelect.value = studentId;
+            });
+        });
+    });
+</script>
+{% endblock %}
