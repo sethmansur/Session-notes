@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import sqlite3
 import os
 from datetime import datetime, date
 from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file, session
@@ -27,7 +26,7 @@ else:
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Import database and auth after app creation
-from models import db
+from models import db, User, Organization, Membership, Student, Objective, Session, Event, ObjectiveItem, EventSelection
 from replit_auth import login_manager, make_replit_blueprint, require_login
 
 # Initialize login manager
@@ -57,113 +56,37 @@ with app.app_context():
     db.create_all()
     logging.info("Database tables created")
 
-# Removed duplicate get_db function - using PostgreSQL through SQLAlchemy
-    
-    # Create tables
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS students (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            first_name TEXT UNIQUE NOT NULL
-        )
-    ''')
-    
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS objectives (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_id INTEGER NOT NULL,
-            objective_text TEXT NOT NULL,
-            FOREIGN KEY (student_id) REFERENCES students (id) ON DELETE CASCADE
-        )
-    ''')
-    
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL UNIQUE
-        )
-    ''')
-    
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id INTEGER NOT NULL,
-            student_id INTEGER NOT NULL,
-            objective_id INTEGER NOT NULL,
-            count INTEGER NOT NULL DEFAULT 0,
-            activity TEXT,
-            prompt_level TEXT,
-            notes TEXT,
-            FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
-            FOREIGN KEY (student_id) REFERENCES students (id) ON DELETE CASCADE,
-            FOREIGN KEY (objective_id) REFERENCES objectives (id) ON DELETE CASCADE,
-            UNIQUE(session_id, student_id, objective_id)
-        )
-    ''')
-    
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS objective_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            objective_id INTEGER NOT NULL,
-            item_text TEXT NOT NULL,
-            display_order INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (objective_id) REFERENCES objectives (id) ON DELETE CASCADE
-        )
-    ''')
-    
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS event_selections (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_id INTEGER NOT NULL,
-            objective_item_id INTEGER NOT NULL,
-            selected BOOLEAN NOT NULL DEFAULT 0,
-            FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE,
-            FOREIGN KEY (objective_item_id) REFERENCES objective_items (id) ON DELETE CASCADE,
-            UNIQUE(event_id, objective_item_id)
-        )
-    ''')
-    
-    # Create indices for performance
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_objectives_student_id ON objectives (student_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_events_student_id ON events (student_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_events_objective_id ON events (objective_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_events_session_id ON events (session_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_objective_items_objective_id ON objective_items (objective_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_event_selections_event_id ON event_selections (event_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_event_selections_item_id ON event_selections (objective_item_id)')
-    
-    # Add new columns to existing events table if they don't exist
-    try:
-        conn.execute('ALTER TABLE events ADD COLUMN activity TEXT')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-        
-    try:
-        conn.execute('ALTER TABLE events ADD COLUMN prompt_level TEXT')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    conn.commit()
-    conn.close()
+# Database tables are managed by SQLAlchemy models in models.py
 
 def get_db():
-    """Get database connection using SQLAlchemy."""
+    """Get database session using SQLAlchemy."""
     return db.session
 
 def get_or_create_session(date_str):
     """Get or create a session for the given date."""
-    conn = get_db()
-    cursor = conn.execute('SELECT id FROM sessions WHERE date = ?', (date_str,))
-    session = cursor.fetchone()
+    from datetime import datetime
+    date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+    
+    # For now, we'll use a default organization until proper auth is implemented
+    # TODO: Get organization from current user context
+    organization = Organization.query.first()
+    if not organization:
+        # Create a default organization if none exists
+        organization = Organization(name="Default Clinic", subdomain="default")
+        db.session.add(organization)
+        db.session.commit()
+    
+    # Check if session exists
+    session = Session.query.filter_by(organization_id=organization.id, date=date_obj).first()
     
     if session:
-        session_id = session['id']
+        return session.id
     else:
-        cursor = conn.execute('INSERT INTO sessions (date) VALUES (?)', (date_str,))
-        session_id = cursor.lastrowid
-        conn.commit()
-    
-    conn.close()
-    return session_id
+        # Create new session
+        new_session = Session(organization_id=organization.id, date=date_obj)
+        db.session.add(new_session)
+        db.session.commit()
+        return new_session.id
 
 @app.route('/')
 def index():
@@ -178,9 +101,7 @@ def health_check():
     """Dedicated health check endpoint for deployment monitoring."""
     try:
         # Quick database connectivity check
-        conn = get_db()
-        conn.execute('SELECT 1').fetchone()
-        conn.close()
+        db.session.execute(db.text('SELECT 1'))
         return jsonify({'status': 'healthy', 'service': 'speech-therapy-app'}), 200
     except Exception as e:
         app.logger.error(f"Health check failed: {str(e)}")
@@ -235,16 +156,27 @@ def add_student():
     if not first_name:
         return jsonify({'error': 'First name is required'}), 400
     
-    conn = get_db()
     try:
-        cursor = conn.execute('INSERT INTO students (first_name) VALUES (?)', (first_name,))
-        student_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True, 'student_id': student_id})
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({'error': 'Student name already exists'}), 400
+        # Get default organization
+        organization = Organization.query.first()
+        if not organization:
+            organization = Organization(name="Default Clinic", subdomain="default")
+            db.session.add(organization)
+            db.session.commit()
+        
+        # Check if student already exists in this organization
+        existing_student = Student.query.filter_by(organization_id=organization.id, first_name=first_name).first()
+        if existing_student:
+            return jsonify({'error': 'Student name already exists'}), 400
+        
+        # Create new student
+        student = Student(organization_id=organization.id, first_name=first_name)
+        db.session.add(student)
+        db.session.commit()
+        return jsonify({'success': True, 'student_id': student.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/students/delete', methods=['POST'])
 @require_login
@@ -255,12 +187,15 @@ def delete_student():
     if not student_id:
         return jsonify({'error': 'Student ID is required'}), 400
     
-    conn = get_db()
-    conn.execute('DELETE FROM students WHERE id = ?', (student_id,))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    try:
+        student = Student.query.get(student_id)
+        if student:
+            db.session.delete(student)
+            db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/objectives/save', methods=['POST'])
 @require_login
@@ -272,33 +207,33 @@ def save_objectives():
     if not student_id:
         return jsonify({'error': 'Student ID is required'}), 400
     
-    conn = get_db()
-    
-    # Delete existing objectives for this student
-    conn.execute('DELETE FROM objectives WHERE student_id = ?', (student_id,))
-    
-    # Parse and save new objectives
-    if objectives_text:
-        lines = [line.strip() for line in objectives_text.split('\n') if line.strip()]
+    try:
+        # Delete existing objectives for this student
+        Objective.query.filter_by(student_id=student_id).delete()
         
-        # Handle numbered lists (remove numbers)
-        objectives = []
-        for line in lines:
-            # Remove leading numbers like "1.", "2.", etc.
-            import re
-            cleaned = re.sub(r'^\d+\.\s*', '', line).strip()
-            if cleaned:
-                objectives.append(cleaned)
+        # Parse and save new objectives
+        if objectives_text:
+            lines = [line.strip() for line in objectives_text.split('\n') if line.strip()]
+            
+            # Handle numbered lists (remove numbers)
+            objectives = []
+            for line in lines:
+                # Remove leading numbers like "1.", "2.", etc.
+                import re
+                cleaned = re.sub(r'^\d+\.\s*', '', line).strip()
+                if cleaned:
+                    objectives.append(cleaned)
+            
+            # Insert new objectives
+            for obj_text in objectives:
+                objective = Objective(student_id=student_id, objective_text=obj_text)
+                db.session.add(objective)
         
-        # Insert new objectives
-        for obj_text in objectives:
-            conn.execute('INSERT INTO objectives (student_id, objective_text) VALUES (?, ?)',
-                        (student_id, obj_text))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/objectives/delete', methods=['POST'])
 @require_login
