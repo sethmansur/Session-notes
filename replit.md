@@ -16,6 +16,16 @@ SessionNotes is a production-ready SaaS platform designed for SLP, OT, PT, and r
 
 **User Preferences**: Clean, accessible UI with large tap targets, high contrast, and responsive design optimized for iPad usage in therapy sessions.
 
+## Recent Changes
+
+### SaaS Transformation (Latest)
+- **7-Day Free Trial**: Implemented user trial tracking with automatic expiration and subscription gating
+- **Subscription Management**: Added Stripe integration with checkout sessions for Starter ($9), Pro ($19), and Team ($39) plans
+- **Marketing Website**: Created professional landing page at "/" with hero sections, features, and pricing
+- **App Authentication**: Moved core functionality to "/app" route requiring authentication and active subscription
+- **Payment Processing**: Robust webhook handling for subscription events, renewals, and cancellations
+- **Upgrade Flow**: Built subscription upgrade page with professional pricing cards and JavaScript checkout
+
 ## System Architecture
 
 ### Frontend Architecture

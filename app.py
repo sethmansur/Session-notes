@@ -155,21 +155,26 @@ def create_checkout_session():
     }
     
     try:
-        checkout_session = stripe.checkout.Session.create(
-            customer_email=current_user.email,
-            line_items=[{
+        checkout_params = {
+            'line_items': [{
                 'price': price_ids.get(plan_type, price_ids['starter']),
                 'quantity': 1,
             }],
-            mode='subscription',
-            success_url=f'https://{YOUR_DOMAIN}/app?success=true',
-            cancel_url=f'https://{YOUR_DOMAIN}/upgrade?canceled=true',
-            automatic_tax={'enabled': False},
-            metadata={
+            'mode': 'subscription',
+            'success_url': f'https://{YOUR_DOMAIN}/app?success=true',
+            'cancel_url': f'https://{YOUR_DOMAIN}/upgrade?canceled=true',
+            'automatic_tax': {'enabled': False},
+            'metadata': {
                 'user_id': current_user.id,
                 'plan_type': plan_type
             }
-        )
+        }
+        
+        # Only include customer_email if user has email
+        if current_user.email:
+            checkout_params['customer_email'] = current_user.email
+        
+        checkout_session = stripe.checkout.Session.create(**checkout_params)
         return jsonify({'url': checkout_session.url})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -184,6 +189,8 @@ def handle_stripe_webhook():
         return '', 400
     
     endpoint_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+    if not endpoint_secret:
+        return '', 400
     
     try:
         event = stripe.Webhook.construct_event(
@@ -200,25 +207,73 @@ def handle_stripe_webhook():
         handle_successful_payment(session)
     elif event['type'] == 'invoice.payment_succeeded':
         invoice = event['data']['object']
-        handle_successful_payment(invoice)
+        handle_recurring_payment_success(invoice)
     elif event['type'] == 'invoice.payment_failed':
         invoice = event['data']['object']
         handle_failed_payment(invoice)
+    elif event['type'] == 'customer.subscription.deleted':
+        subscription = event['data']['object']
+        handle_subscription_canceled(subscription)
+    elif event['type'] == 'customer.subscription.updated':
+        subscription = event['data']['object']
+        handle_subscription_updated(subscription)
     
     return '', 200
 
-def handle_successful_payment(session_or_invoice):
-    """Handle successful payment from Stripe"""
-    user_id = session_or_invoice.get('metadata', {}).get('user_id')
+def handle_successful_payment(session):
+    """Handle successful checkout session completion"""
+    user_id = session.get('metadata', {}).get('user_id')
+    plan_type = session.get('metadata', {}).get('plan_type', 'starter')
+    
     if not user_id:
         return
     
     user = User.query.get(user_id)
     if user:
         user.subscription_status = 'active'
-        user.stripe_customer_id = session_or_invoice.get('customer')
-        if 'subscription' in session_or_invoice:
-            user.stripe_subscription_id = session_or_invoice['subscription']
+        user.stripe_customer_id = session.get('customer')
+        user.stripe_subscription_id = session.get('subscription')
+        user.plan_type = plan_type
+        db.session.commit()
+
+def handle_recurring_payment_success(invoice):
+    """Handle successful recurring payment"""
+    customer_id = invoice.get('customer')
+    if not customer_id:
+        return
+    
+    user = User.query.filter_by(stripe_customer_id=customer_id).first()
+    if user and user.subscription_status != 'active':
+        user.subscription_status = 'active'
+        db.session.commit()
+
+def handle_subscription_canceled(subscription):
+    """Handle subscription cancellation"""
+    customer_id = subscription.get('customer')
+    if not customer_id:
+        return
+    
+    user = User.query.filter_by(stripe_customer_id=customer_id).first()
+    if user:
+        user.subscription_status = 'canceled'
+        db.session.commit()
+
+def handle_subscription_updated(subscription):
+    """Handle subscription status updates"""
+    customer_id = subscription.get('customer')
+    status = subscription.get('status')
+    
+    if not customer_id or not status:
+        return
+    
+    user = User.query.filter_by(stripe_customer_id=customer_id).first()
+    if user:
+        if status in ['canceled', 'unpaid']:
+            user.subscription_status = 'canceled'
+        elif status == 'past_due':
+            user.subscription_status = 'past_due'
+        elif status == 'active':
+            user.subscription_status = 'active'
         db.session.commit()
 
 def handle_failed_payment(invoice):
@@ -439,7 +494,7 @@ def save_objective_items():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objective_items/get/<int:objective_id>')
-@require_login
+@require_subscription
 def get_objective_items(objective_id):
     """Get items for a specific objective."""
     items = ObjectiveItem.query.filter_by(objective_id=objective_id)\
@@ -845,7 +900,7 @@ def report():
                          report_type=report_type)
 
 @app.route('/app/report.csv')
-@require_login
+@require_subscription
 def report_csv():
     """Export report as CSV."""
     start_date = request.args.get('start_date', '')
@@ -912,7 +967,7 @@ def report_csv():
                      download_name=filename)
 
 @app.route('/app/report.tsv')
-@require_login
+@require_subscription
 def report_tsv():
     """Export report as TSV for clipboard."""
     start_date = request.args.get('start_date', '')
@@ -989,7 +1044,7 @@ def download_bulk_upload_template():
         return jsonify({'error': 'Failed to download template'}), 500
 
 @app.route('/app/print/sheet')
-@require_login
+@require_subscription
 def print_data_collection_sheet():
     """Generate printable data collection sheet for offline therapy sessions"""
     try:
