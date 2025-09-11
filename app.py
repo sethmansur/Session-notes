@@ -15,7 +15,15 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
+
+# Set secret key - use different keys for production vs development
+if os.environ.get("REPLIT_DEPLOYMENT") == "1":
+    # Production environment - use a secure secret key
+    app.secret_key = os.environ.get("SESSION_SECRET", "production-speech-therapy-secret-2024")
+else:
+    # Development environment
+    app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
+
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Import database and auth after app creation
@@ -1151,5 +1159,8 @@ if __name__ == '__main__':
     # Get port from environment variable (for production) or default to 5000 (for development)
     port = int(os.environ.get('PORT', 5000))
     
+    # Set debug mode based on environment
+    debug_mode = os.environ.get("REPLIT_DEPLOYMENT") != "1"
+    
     # Run the app
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
