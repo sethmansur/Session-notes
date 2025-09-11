@@ -11,7 +11,7 @@
             <li><strong>Sheet Name:</strong> Must be named "Database" (case-insensitive)</li>
             <li><strong>Row 1:</strong> Student names as column headers</li>
             <li><strong>Column Data:</strong> Each objective on a separate row under the student's column</li>
-            <li><strong>File Types:</strong> .xlsx, .xls Excel files only</li>
+            <li><strong>File Types:</strong> .xlsx Excel files only (newer format)</li>
         </ul>
         
         <div style="padding: 1rem; background: #e8f4fd; border-radius: 8px; margin: 1rem 0;">
@@ -40,11 +40,11 @@
     <form id="import-form" enctype="multipart/form-data" style="margin-bottom: 2rem;">
         <div style="border: 2px dashed #ddd; border-radius: 8px; padding: 2rem; text-align: center; background: #fafafa;">
             <div id="drop-zone" style="cursor: pointer;">
-                <input type="file" id="file-input" name="file" accept=".xlsx,.xls" style="display: none;" required>
+                <input type="file" id="file-input" name="file" accept=".xlsx" style="display: none;" required>
                 <div id="file-display">
                     <div style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;">📁</div>
                     <div style="font-size: 1.2rem; margin-bottom: 0.5rem;">Click to choose file or drag & drop</div>
-                    <div style="color: #666; font-size: 0.9rem;">Excel files only (.xlsx, .xls)</div>
+                    <div style="color: #666; font-size: 0.9rem;">Excel files only (.xlsx format)</div>
                 </div>
             </div>
         </div>
@@ -135,14 +135,13 @@
         const file = fileInput.files[0];
         if (!file) return;
         
-        // Validate file type
+        // Validate file type - only .xlsx format supported
         const allowedTypes = [
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-            'application/vnd.ms-excel' // .xls
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' // .xlsx only
         ];
         
-        if (!allowedTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
-            showMessage('Please select a valid Excel file (.xlsx or .xls)', 'error');
+        if (!allowedTypes.includes(file.type) && !file.name.match(/\.xlsx$/i)) {
+            showMessage('Please select a valid Excel file (.xlsx format only)', 'error');
             clearFile();
             return;
         }
@@ -264,6 +263,43 @@
             enableImportButton();
         }
     });
+    
+    function showMessage(message, type = 'info') {
+        // Create or update message element
+        let messageEl = document.getElementById('message-display');
+        if (!messageEl) {
+            messageEl = document.createElement('div');
+            messageEl.id = 'message-display';
+            messageEl.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 1000; max-width: 400px; padding: 1rem; border-radius: 8px; font-weight: bold; transition: all 0.3s ease;';
+            document.body.appendChild(messageEl);
+        }
+        
+        // Set colors based on type
+        const colors = {
+            success: { bg: '#d4edda', text: '#155724', border: '#c3e6cb' },
+            error: { bg: '#f8d7da', text: '#721c24', border: '#f5c6cb' },
+            info: { bg: '#d1ecf1', text: '#0c5460', border: '#bee5eb' }
+        };
+        
+        const color = colors[type] || colors.info;
+        messageEl.style.backgroundColor = color.bg;
+        messageEl.style.color = color.text;
+        messageEl.style.border = `1px solid ${color.border}`;
+        messageEl.textContent = message;
+        messageEl.style.display = 'block';
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            if (messageEl && messageEl.parentNode) {
+                messageEl.style.opacity = '0';
+                setTimeout(() => {
+                    if (messageEl && messageEl.parentNode) {
+                        messageEl.parentNode.removeChild(messageEl);
+                    }
+                }, 300);
+            }
+        }, 5000);
+    }
     
     function showResults(result) {
         const resultsDiv = document.getElementById('import-results');

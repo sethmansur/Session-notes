@@ -23,7 +23,15 @@ else:
     # Development environment
     app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
 
+# Configure file upload limits (10MB max)
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# Handle file upload size limit errors
+@app.errorhandler(413)
+def file_too_large(error):
+    return jsonify({'error': 'File too large. Please upload a file smaller than 10MB.'}), 413
 
 # Import database and auth after app creation
 from models import db, User, Organization, Membership, Student, Objective, Session, Event, ObjectiveItem, EventSelection
@@ -831,11 +839,11 @@ def import_spreadsheet():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
-        # Validate file type
-        allowed_extensions = {'.xlsx', '.xls'}
+        # Validate file type - only .xlsx supported
+        allowed_extensions = {'.xlsx'}
         file_ext = os.path.splitext(file.filename)[1].lower()
         if file_ext not in allowed_extensions:
-            return jsonify({'error': 'Invalid file type. Please upload an Excel file (.xlsx or .xls)'}), 400
+            return jsonify({'error': 'Invalid file type. Please upload an Excel file in .xlsx format only.'}), 400
         
         # Validate file size (10MB limit)
         file.seek(0, 2)  # Seek to end
@@ -848,10 +856,14 @@ def import_spreadsheet():
         temp_dir = 'temp_uploads'
         os.makedirs(temp_dir, exist_ok=True)
         
-        # Save uploaded file temporarily with safe filename
+        # Save uploaded file temporarily with secure filename
         import time
         import uuid
-        safe_filename = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{file.filename}"
+        from werkzeug.utils import secure_filename
+        
+        # Create secure filename
+        original_name = secure_filename(file.filename)
+        safe_filename = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{original_name}"
         temp_filepath = os.path.join(temp_dir, safe_filename)
         
         try:
