@@ -823,6 +823,26 @@ def report_tsv():
     
     return tsv_content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
+@app.route('/download/bulk-upload-template')
+@require_login
+def download_bulk_upload_template():
+    """Download the Excel template for bulk student and objective uploads"""
+    try:
+        template_path = os.path.join('attached_assets', 'Data Collection Bulk Upload Template File_1757622957306.xlsx')
+        
+        if not os.path.exists(template_path):
+            return jsonify({'error': 'Template file not found'}), 404
+            
+        return send_file(
+            template_path,
+            as_attachment=True,
+            download_name='Speech_Therapy_Bulk_Upload_Template.xlsx',
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    except Exception as e:
+        logging.error(f"Error downloading template: {e}")
+        return jsonify({'error': 'Failed to download template'}), 500
+
 @app.route('/admin/import_spreadsheet', methods=['GET', 'POST'])
 @require_login
 def import_spreadsheet():
