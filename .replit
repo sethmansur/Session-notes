@@ -33,5 +33,10 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
 [deployment]
-deploymentTarget = "cloudrun"
+deploymentTarget = "autoscale"
+run = ["gunicorn", "app:app", "-k", "gthread", "--threads", "8", "--workers", "1", "--timeout", "120", "--bind", "0.0.0.0:$PORT"]

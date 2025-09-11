@@ -126,8 +126,32 @@ def get_or_create_session(date_str):
 
 @app.route('/')
 def index():
-    """Redirect to collect page."""
-    return redirect(url_for('collect'))
+    """Health check and redirect to collect page."""
+    try:
+        # Quick health check - ensure database is accessible
+        conn = get_db()
+        conn.execute('SELECT 1').fetchone()
+        conn.close()
+        
+        # Redirect to collect page for normal users
+        return redirect(url_for('collect'))
+    except Exception as e:
+        # Return simple health status for deployment health checks
+        app.logger.error(f"Health check failed: {str(e)}")
+        return jsonify({'status': 'error', 'message': 'Service unavailable'}), 503
+
+@app.route('/health')
+def health_check():
+    """Dedicated health check endpoint for deployment monitoring."""
+    try:
+        # Quick database connectivity check
+        conn = get_db()
+        conn.execute('SELECT 1').fetchone()
+        conn.close()
+        return jsonify({'status': 'healthy', 'service': 'speech-therapy-app'}), 200
+    except Exception as e:
+        app.logger.error(f"Health check failed: {str(e)}")
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
 @app.route('/students')
 def students():
@@ -1078,5 +1102,8 @@ if __name__ == '__main__':
     # Initialize database on startup
     init_db()
     
-    # Run the app
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Get port from environment variable (for production) or default to 5000 (for development)
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Run the app in production mode
+    app.run(host='0.0.0.0', port=port, debug=False)
