@@ -843,6 +843,77 @@ def download_bulk_upload_template():
         logging.error(f"Error downloading template: {e}")
         return jsonify({'error': 'Failed to download template'}), 500
 
+@app.route('/print/sheet')
+@require_login
+def print_data_collection_sheet():
+    """Generate printable data collection sheet for offline therapy sessions"""
+    try:
+        # Get parameters
+        student_ids = request.args.get('student_ids', '')
+        session_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        boxes_per_objective = int(request.args.get('boxes', 10))
+        box_size = request.args.get('box_size', '1')  # inches
+        compress = request.args.get('compress', 'false').lower() == 'true'
+        show_items = request.args.get('show_items', 'false').lower() == 'true'
+        
+        # Validate parameters
+        if not student_ids:
+            return "No students selected for print sheet", 400
+            
+        try:
+            student_id_list = [int(id.strip()) for id in student_ids.split(',') if id.strip()]
+        except ValueError:
+            return "Invalid student IDs provided", 400
+            
+        if not student_id_list:
+            return "No valid student IDs provided", 400
+            
+        # Get organization for current user
+        organization = Organization.query.first()
+        if not organization:
+            return "Organization not found", 404
+            
+        # Fetch students with their objectives, scoped to organization
+        students_query = Student.query.filter(
+            Student.id.in_(student_id_list),
+            Student.organization_id == organization.id
+        ).options(db.joinedload(Student.objectives))
+        
+        if show_items:
+            students_query = students_query.options(
+                db.joinedload(Student.objectives).joinedload(Objective.items)
+            )
+            
+        students = students_query.order_by(Student.first_name).all()
+        
+        if not students:
+            return "No students found or access denied", 404
+            
+        # Group students into pages (4 per page, or 6 if compressed)
+        students_per_page = 6 if compress else 4
+        pages = []
+        for i in range(0, len(students), students_per_page):
+            page_students = students[i:i + students_per_page]
+            pages.append(page_students)
+            
+        # Prepare template data
+        template_data = {
+            'pages': pages,
+            'session_date': session_date,
+            'boxes_per_objective': boxes_per_objective,
+            'box_size': box_size,
+            'compress': compress,
+            'show_items': show_items,
+            'therapist_name': '',  # Could be filled from user profile later
+            'organization_name': organization.name
+        }
+        
+        return render_template('print_sheet.html', **template_data)
+        
+    except Exception as e:
+        logging.error(f"Error generating print sheet: {e}")
+        return f"Error generating print sheet: {str(e)}", 500
+
 @app.route('/admin/import_spreadsheet', methods=['GET', 'POST'])
 @require_login
 def import_spreadsheet():

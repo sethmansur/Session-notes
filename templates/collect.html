@@ -150,6 +150,11 @@
     <div style="display: flex; align-items: center; gap: 1rem;">
         <input type="date" id="session-date" value="{{ today }}" 
                style="padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px;">
+        <button id="print-sheet-btn" class="btn btn-secondary" onclick="generatePrintSheet()" 
+                style="padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem;"
+                disabled title="Select students to enable print sheet">
+            🖨️ Print Sheet
+        </button>
     </div>
 </div>
 
@@ -204,6 +209,7 @@
         }
         
         renderStudentCards();
+        updatePrintButton();
     }
     
     async function renderStudentCards() {
@@ -212,6 +218,7 @@
         
         if (selectedStudents.length === 0) {
             container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #666; padding: 2rem; font-style: italic;">Select students above to start data collection</div>';
+            updatePrintButton();
             return;
         }
         
@@ -258,6 +265,31 @@
         // Load existing counts for this date
         await loadExistingCounts();
     }
+    
+    function updatePrintButton() {
+        const printBtn = document.getElementById('print-sheet-btn');
+        if (selectedStudents.length > 0) {
+            printBtn.disabled = false;
+            printBtn.title = `Generate print sheet for ${selectedStudents.length} student${selectedStudents.length > 1 ? 's' : ''}`;
+        } else {
+            printBtn.disabled = true;
+            printBtn.title = 'Select students to enable print sheet';
+        }
+    }
+    
+    function generatePrintSheet() {
+        if (selectedStudents.length === 0) {
+            showMessage('Please select at least one student', 'error');
+            return;
+        }
+        
+        const studentIds = selectedStudents.map(s => s.id).join(',');
+        const printUrl = `/print/sheet?student_ids=${studentIds}&date=${sessionDate}&boxes=10&auto_print=true`;
+        
+        // Open in new window/tab for printing
+        window.open(printUrl, '_blank', 'width=800,height=600');
+    }
+    
     async function loadExistingCounts() {
         if (selectedStudents.length === 0) return;
         

@@ -49,12 +49,31 @@
     <div class="card">
         <h3>Students & Their Objectives</h3>
         
+        <!-- Print Sheet Section -->
+        {% if students %}
+        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #495057;">🖨️ Print Data Collection Sheets</h4>
+            <p style="margin: 0 0 1rem 0; color: #6c757d; font-size: 0.9rem;">Select students to create printable data collection sheets for offline therapy sessions.</p>
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                <input type="date" id="print-date" style="padding: 0.5rem; border: 1px solid #ced4da; border-radius: 4px;">
+                <button id="print-selected-btn" class="btn btn-primary" onclick="generateSelectedPrintSheet()" disabled>
+                    🖨️ Print Selected (0)
+                </button>
+                <button class="btn btn-secondary" onclick="selectAllStudents()">Select All</button>
+                <button class="btn btn-secondary" onclick="clearStudentSelection()">Clear</button>
+            </div>
+        </div>
+        {% endif %}
+        
         <div id="students-list">
             {% if students %}
                 {% for student in students %}
                 <div class="student-item" data-student-id="{{ student.id }}">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <h4 style="margin: 0; color: #2c3e50;">{{ student.first_name }}</h4>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" class="student-print-checkbox" data-student-id="{{ student.id }}" data-student-name="{{ student.first_name }}" onchange="updatePrintSelection()">
+                            <h4 style="margin: 0; color: #2c3e50;">{{ student.first_name }}</h4>
+                        </div>
                         <button class="btn btn-danger btn-small" onclick="deleteStudent({{ student.id }}, '{{ student.first_name }}')">Delete</button>
                     </div>
                     
@@ -402,6 +421,57 @@
         }
     }
     
+    // Print sheet functionality
+    function updatePrintSelection() {
+        const checkboxes = document.querySelectorAll('.student-print-checkbox:checked');
+        const printBtn = document.getElementById('print-selected-btn');
+        const count = checkboxes.length;
+        
+        printBtn.textContent = `🖨️ Print Selected (${count})`;
+        printBtn.disabled = count === 0;
+        
+        if (count > 0) {
+            printBtn.title = `Generate print sheet for ${count} student${count > 1 ? 's' : ''}`;
+        } else {
+            printBtn.title = 'Select students to enable printing';
+        }
+    }
+    
+    function selectAllStudents() {
+        const checkboxes = document.querySelectorAll('.student-print-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+        });
+        updatePrintSelection();
+    }
+    
+    function clearStudentSelection() {
+        const checkboxes = document.querySelectorAll('.student-print-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        updatePrintSelection();
+    }
+    
+    function generateSelectedPrintSheet() {
+        const selectedCheckboxes = document.querySelectorAll('.student-print-checkbox:checked');
+        
+        if (selectedCheckboxes.length === 0) {
+            showMessage('Please select at least one student', 'error');
+            return;
+        }
+        
+        const studentIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.studentId).join(',');
+        const printDate = document.getElementById('print-date').value || new Date().toISOString().split('T')[0];
+        
+        const printUrl = `/print/sheet?student_ids=${studentIds}&date=${printDate}&boxes=10&auto_print=true`;
+        
+        // Open in new window/tab for printing
+        window.open(printUrl, '_blank', 'width=800,height=600');
+        
+        showMessage(`Opening print sheet for ${selectedCheckboxes.length} student${selectedCheckboxes.length > 1 ? 's' : ''}`, 'success');
+    }
+    
     // Auto-select student when clicking on their objectives textarea
     document.addEventListener('DOMContentLoaded', function() {
         const studentSelect = document.getElementById('student-select');
@@ -413,6 +483,12 @@
                 studentSelect.value = studentId;
             });
         });
+        
+        // Set today's date as default for print date
+        const printDateInput = document.getElementById('print-date');
+        if (printDateInput) {
+            printDateInput.value = new Date().toISOString().split('T')[0];
+        }
     });
 </script>
 {% endblock %}
