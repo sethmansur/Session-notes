@@ -1156,7 +1156,6 @@ def print_data_collection_sheet():
         return f"Error generating print sheet: {str(e)}", 500
 
 @app.route('/app/admin/import_spreadsheet', methods=['GET', 'POST'])
-@require_subscription
 def import_spreadsheet():
     """Import data from uploaded Excel spreadsheet."""
     if request.method == 'GET':
