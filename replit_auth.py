@@ -69,6 +69,19 @@ def make_replit_blueprint():
 
     issuer_url = os.environ.get('ISSUER_URL', "https://replit.com/oidc")
 
+    # Get the Replit domain for proper OAuth redirect
+    replit_domain = os.environ.get('REPLIT_DEV_DOMAIN')
+    if not replit_domain:
+        replit_domains = os.environ.get('REPLIT_DOMAINS', '')
+        if replit_domains:
+            replit_domain = replit_domains.split(',')[0]
+    
+    # Build proper redirect URI
+    if replit_domain:
+        redirect_uri = f"https://{replit_domain}/auth/replit_auth/authorized"
+    else:
+        redirect_uri = None  # Let Flask-Dance auto-generate
+    
     replit_bp = OAuth2ConsumerBlueprint(
         "replit_auth",
         __name__,
@@ -88,6 +101,7 @@ def make_replit_blueprint():
             "client_id": repl_id,
         },
         authorization_url=issuer_url + "/auth",
+        redirect_url=redirect_uri,
         use_pkce=True,
         code_challenge_method="S256",
         scope=["openid", "profile", "email", "offline_access"],
@@ -100,6 +114,12 @@ def make_replit_blueprint():
             session['_browser_session_key'] = uuid.uuid4().hex
         session.modified = True
         g.browser_session_key = session['_browser_session_key']
+        
+        # CRITICAL: Set redirect_url BEFORE accessing replit_bp.session
+        from flask import url_for
+        replit_bp.redirect_url = url_for('replit_auth.authorized', _external=True, _scheme='https')
+        
+        # Now it's safe to access the session - it will use the correct redirect_url
         g.flask_dance_replit = replit_bp.session
 
     @replit_bp.route("/logout")
