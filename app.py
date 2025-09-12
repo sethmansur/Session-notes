@@ -1489,8 +1489,13 @@ def print_data_collection_sheet():
         if not students:
             return "No students found or access denied", 404
             
-        # Put all students on a single page for compact printing
-        pages = [students]  # Single page with all students
+        # Distribute students across pages - max 4 per page for optimal note-taking space
+        pages = []
+        students_per_page = 4
+        
+        for i in range(0, len(students), students_per_page):
+            page_students = students[i:i + students_per_page]
+            pages.append(page_students)
             
         # Prepare template data
         template_data = {
@@ -1501,7 +1506,9 @@ def print_data_collection_sheet():
             'compress': compress,
             'show_items': show_items,
             'therapist_name': '',  # Could be filled from user profile later
-            'organization_name': organization.name
+            'organization_name': organization.name,
+            'therapy_type': request.args.get('therapy_type', 'Data Collection'),
+            'page_subtitle': request.args.get('page_subtitle', 'All Students')
         }
         
         return render_template('print_sheet.html', **template_data)
