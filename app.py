@@ -163,7 +163,6 @@ def app_dashboard():
 
 # Subscription management routes
 @app.route('/upgrade')
-@require_subscription
 def upgrade():
     """Upgrade page with subscription plans"""
     days_left = 0
