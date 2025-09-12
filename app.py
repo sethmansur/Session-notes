@@ -53,13 +53,146 @@ def file_too_large(error):
 
 # Import database and auth after app creation
 from models import db, User, Organization, Membership, Student, Objective, Session, Event, ObjectiveItem, EventSelection
-from replit_auth import login_manager, make_replit_blueprint, require_login
+from replit_auth import login_manager
+from flask_login import login_required, current_user
+from functools import wraps
 
 # Initialize login manager
 login_manager.init_app(app)
 
-# Register auth blueprint
-app.register_blueprint(make_replit_blueprint(), url_prefix="/auth")
+# Manual OAuth implementation to fix HTTPS redirect URI issue
+@app.route('/auth/replit_auth')
+def manual_oauth_login():
+    from urllib.parse import urlencode
+    import secrets
+    import hashlib
+    import base64
+    
+    # Generate PKCE parameters
+    code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode('utf-8')).digest()
+    ).decode('utf-8').rstrip('=')
+    
+    # Generate state
+    state = secrets.token_urlsafe(32)
+    
+    # Store PKCE in session for later verification
+    session['oauth_code_verifier'] = code_verifier
+    session['oauth_state'] = state
+    
+    # Get domain and force HTTPS
+    domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS', '').split(',')[0]
+    redirect_uri = f"https://{domain}/auth/replit_auth/authorized"
+    
+    # Build authorization URL with HTTPS redirect URI
+    auth_params = {
+        'response_type': 'code',
+        'client_id': os.environ.get('REPL_ID'),
+        'redirect_uri': redirect_uri,
+        'scope': 'openid profile email offline_access',
+        'state': state,
+        'code_challenge': code_challenge,
+        'code_challenge_method': 'S256',
+        'prompt': 'login consent'
+    }
+    
+    auth_url = f"https://replit.com/oidc/auth?{urlencode(auth_params)}"
+    return redirect(auth_url)
+
+@app.route('/auth/replit_auth/authorized')
+def manual_oauth_callback():
+    import requests
+    import jwt
+    from flask_login import login_user
+    
+    # Verify state parameter
+    if request.args.get('state') != session.get('oauth_state'):
+        return "Invalid state parameter", 400
+    
+    # Handle errors
+    if request.args.get('error'):
+        return f"OAuth error: {request.args.get('error_description', 'Unknown error')}", 400
+    
+    # Exchange code for tokens
+    code = request.args.get('code')
+    if not code:
+        return "No authorization code received", 400
+    
+    # Get domain and force HTTPS
+    domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS', '').split(',')[0]
+    redirect_uri = f"https://{domain}/auth/replit_auth/authorized"
+    
+    token_data = {
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': redirect_uri,
+        'client_id': os.environ.get('REPL_ID'),
+        'code_verifier': session.get('oauth_code_verifier')
+    }
+    
+    token_response = requests.post('https://replit.com/oidc/token', data=token_data)
+    
+    if token_response.status_code != 200:
+        return f"Token exchange failed: {token_response.text}", 400
+    
+    tokens = token_response.json()
+    
+    # Decode ID token to get user info
+    user_claims = jwt.decode(tokens['id_token'], options={"verify_signature": False})
+    
+    # Create or update user
+    user = User.query.get(user_claims['sub'])
+    if not user:
+        user = User()
+        user.id = user_claims['sub']
+        user.trial_start_date = datetime.now()
+        user.subscription_status = 'trial'
+    
+    user.email = user_claims.get('email')
+    user.first_name = user_claims.get('first_name')
+    user.last_name = user_claims.get('last_name')
+    user.profile_image_url = user_claims.get('profile_image_url')
+    
+    db.session.merge(user)
+    db.session.commit()
+    
+    # Log in the user
+    login_user(user)
+    
+    # Clean up session
+    session.pop('oauth_state', None)
+    session.pop('oauth_code_verifier', None)
+    
+    # Redirect to app
+    return redirect('/app')
+
+@app.route('/auth/logout')
+def manual_logout():
+    from flask_login import logout_user
+    from urllib.parse import urlencode
+    
+    logout_user()
+    
+    # Redirect to Replit's logout endpoint
+    logout_params = {
+        'client_id': os.environ.get('REPL_ID'),
+        'post_logout_redirect_uri': request.url_root
+    }
+    logout_url = f"https://replit.com/oidc/session/end?{urlencode(logout_params)}"
+    return redirect(logout_url)
+
+# Custom authentication decorators
+def require_subscription(f):
+    """Decorator that requires user to be logged in with active subscription or trial"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect('/auth/replit_auth')
+        if not current_user.has_active_subscription():
+            return redirect('/upgrade')
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Make session permanent
 @app.before_request
@@ -92,7 +225,7 @@ def require_subscription(f):
     def decorated_function(*args, **kwargs):
         # First require login
         if not current_user.is_authenticated:
-            return redirect(url_for('replit_auth.login'))
+            return redirect('/auth/replit_auth')
         
         # Check if user has active subscription
         if not current_user.has_active_subscription():
@@ -141,7 +274,7 @@ def app_dashboard():
 
 # Subscription management routes
 @app.route('/upgrade')
-@require_login
+@require_subscription
 def upgrade():
     """Upgrade page with subscription plans"""
     days_left = 0
@@ -151,7 +284,7 @@ def upgrade():
     return render_template('upgrade.html', days_left=days_left)
 
 @app.route('/create-checkout-session', methods=['POST'])
-@require_login  
+@require_subscription  
 def create_checkout_session():
     """Create Stripe checkout session"""
     if not stripe.api_key:
@@ -360,7 +493,7 @@ def students():
     return render_template('students.html', students=students)
 
 @app.route('/app/students/add', methods=['POST'])
-@require_login
+@require_subscription
 def add_student():
     """Add a new student."""
     first_name = request.form.get('first_name', '').strip()
@@ -391,7 +524,7 @@ def add_student():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/students/delete', methods=['POST'])
-@require_login
+@require_subscription
 def delete_student():
     """Delete a student and all their objectives/events."""
     student_id = request.form.get('student_id')
@@ -410,7 +543,7 @@ def delete_student():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objectives/save', methods=['POST'])
-@require_login
+@require_subscription
 def save_objectives():
     """Save objectives for a student."""
     student_id = request.form.get('student_id')
@@ -448,7 +581,7 @@ def save_objectives():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objectives/delete', methods=['POST'])
-@require_login
+@require_subscription
 def delete_objective():
     """Delete a specific objective."""
     objective_id = request.form.get('objective_id')
@@ -467,7 +600,7 @@ def delete_objective():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objective_items/save', methods=['POST'])
-@require_login
+@require_subscription
 def save_objective_items():
     """Save items for a specific objective."""
     objective_id = request.form.get('objective_id')
@@ -518,7 +651,7 @@ def get_objective_items(objective_id):
     return jsonify({'items': items_list})
 
 @app.route('/app/objective_items/delete', methods=['POST'])
-@require_login
+@require_subscription
 def delete_objective_item():
     """Delete a specific objective item."""
     item_id = request.form.get('item_id')
@@ -573,7 +706,7 @@ def collect():
     return render_template('collect.html', students=students, today=today)
 
 @app.route('/app/event/increment', methods=['POST'])
-@require_login
+@require_subscription
 def increment_event():
     """Increment count for an objective on a date."""
     data = request.get_json()
@@ -620,7 +753,7 @@ def increment_event():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/event/decrement', methods=['POST'])
-@require_login
+@require_subscription
 def decrement_event():
     """Decrement count for an objective on a date."""
     data = request.get_json()
@@ -657,7 +790,7 @@ def decrement_event():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/event/save_notes', methods=['POST'])
-@require_login
+@require_subscription
 def save_notes():
     """Save notes for a student on a date."""
     data = request.get_json()
@@ -683,7 +816,7 @@ def save_notes():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/event/counts', methods=['GET'])
-@require_login
+@require_subscription
 def get_counts():
     """Get existing counts for a date and students."""
     date_str = request.args.get('date')
@@ -716,7 +849,7 @@ def get_counts():
     return jsonify({'counts': counts, 'notes': notes})
 
 @app.route('/app/event/toggle_item_selection', methods=['POST'])
-@require_login
+@require_subscription
 def toggle_item_selection():
     """Toggle selection of a specific objective item for an event."""
     data = request.get_json()
@@ -791,7 +924,7 @@ def toggle_item_selection():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/event/selections', methods=['GET'])
-@require_login
+@require_subscription
 def get_selections():
     """Get existing item selections for a date and students."""
     date_str = request.args.get('date')
@@ -1037,7 +1170,7 @@ def report_tsv():
     return tsv_content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 @app.route('/download/bulk-upload-template')
-@require_login
+@require_subscription
 def download_bulk_upload_template():
     """Download the Excel template for bulk student and objective uploads"""
     try:
@@ -1128,7 +1261,7 @@ def print_data_collection_sheet():
         return f"Error generating print sheet: {str(e)}", 500
 
 @app.route('/app/admin/import_spreadsheet', methods=['GET', 'POST'])
-@require_login
+@require_subscription
 def import_spreadsheet():
     """Import data from uploaded Excel spreadsheet."""
     if request.method == 'GET':

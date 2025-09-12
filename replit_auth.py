@@ -4,7 +4,7 @@ import uuid
 from functools import wraps
 from urllib.parse import urlencode
 
-from flask import g, session, redirect, request, render_template, url_for, render_template_string
+from flask import g, session, redirect, request, render_template, url_for
 from flask_dance.consumer import (
     OAuth2ConsumerBlueprint,
     oauth_authorized,
@@ -16,13 +16,13 @@ from oauthlib.oauth2.rfc6749.errors import InvalidGrantError
 from sqlalchemy.exc import NoResultFound
 from werkzeug.local import LocalProxy
 
-from models import db, OAuth, User
+from models import OAuth, User, db
 
 login_manager = LoginManager()
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, user_id)
+    return User.query.get(user_id)
 
 class UserSessionStorage(BaseStorage):
 
@@ -58,7 +58,6 @@ class UserSessionStorage(BaseStorage):
             provider=blueprint.name).delete()
         db.session.commit()
 
-
 def make_replit_blueprint():
     try:
         repl_id = os.environ['REPL_ID']
@@ -66,14 +65,6 @@ def make_replit_blueprint():
         raise SystemExit("the REPL_ID environment variable must be set")
 
     issuer_url = os.environ.get('ISSUER_URL', "https://replit.com/oidc")
-    
-    # Get the correct redirect URI for this Replit app
-    redirect_uri = None
-    if os.environ.get('REPLIT_DEV_DOMAIN'):
-        redirect_uri = f"https://{os.environ['REPLIT_DEV_DOMAIN']}/auth/replit_auth/authorized"
-    elif os.environ.get('REPLIT_DOMAINS'):
-        primary_domain = os.environ['REPLIT_DOMAINS'].split(',')[0]
-        redirect_uri = f"https://{primary_domain}/auth/replit_auth/authorized"
 
     replit_bp = OAuth2ConsumerBlueprint(
         "replit_auth",
@@ -81,7 +72,6 @@ def make_replit_blueprint():
         client_id=repl_id,
         client_secret=None,
         base_url=issuer_url,
-        redirect_uri=redirect_uri,
         authorization_url_params={
             "prompt": "login consent",
         },
@@ -116,10 +106,8 @@ def make_replit_blueprint():
 
         end_session_endpoint = issuer_url + "/session/end"
         encoded_params = urlencode({
-            "client_id":
-            repl_id,
-            "post_logout_redirect_uri":
-            request.url_root,
+            "client_id": repl_id,
+            "post_logout_redirect_uri": request.url_root,
         })
         logout_url = f"{end_session_endpoint}?{encoded_params}"
 
@@ -127,14 +115,9 @@ def make_replit_blueprint():
 
     @replit_bp.route("/error")
     def error():
-        return render_template_string('''
-        <h1>Authentication Error</h1>
-        <p>There was an error signing you in. Please try again.</p>
-        <a href="/">Return to Home</a>
-        '''), 403
+        return render_template("403.html"), 403
 
     return replit_bp
-
 
 def save_user(user_claims):
     user = User()
@@ -147,7 +130,6 @@ def save_user(user_claims):
     db.session.commit()
     return merged_user
 
-
 @oauth_authorized.connect
 def logged_in(blueprint, token):
     user_claims = jwt.decode(token['id_token'],
@@ -159,14 +141,11 @@ def logged_in(blueprint, token):
     if next_url is not None:
         return redirect(next_url)
 
-
 @oauth_error.connect
 def handle_error(blueprint, error, error_description=None, error_uri=None):
     return redirect(url_for('replit_auth.error'))
 
-
 def require_login(f):
-
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
@@ -175,7 +154,6 @@ def require_login(f):
 
         expires_in = replit.token.get('expires_in', 0)
         if expires_in < 0:
-            issuer_url = os.environ.get('ISSUER_URL', "https://replit.com/oidc")
             refresh_token_url = issuer_url + "/token"
             try:
                 token = replit.refresh_token(token_url=refresh_token_url,
@@ -190,7 +168,6 @@ def require_login(f):
 
     return decorated_function
 
-
 def get_next_navigation_url(request):
     is_navigation_url = request.headers.get(
         'Sec-Fetch-Mode') == 'navigate' and request.headers.get(
@@ -199,5 +176,7 @@ def get_next_navigation_url(request):
         return request.url
     return request.referrer or request.url
 
-
 replit = LocalProxy(lambda: g.flask_dance_replit)
+
+# Legacy compatibility functions for existing code
+require_subscription = require_login  # Alias for backward compatibility
