@@ -61,6 +61,9 @@
                 <option value="data_grid" {% if report_type == 'data_grid' %}selected{% endif %}>
                     🔢 Quick Data Grid
                 </option>
+                <option value="student_dashboard" {% if report_type == 'student_dashboard' %}selected{% endif %}>
+                    📏 Student Dashboard (sessions & totals)
+                </option>
             </select>
         </div>
         
@@ -82,6 +85,7 @@
             {% elif report_type == 'goal_tracking' %}Goal Achievement Tracker
             {% elif report_type == 'therapist_notes' %}Therapist Notes View
             {% elif report_type == 'data_grid' %}Quick Data Grid
+            {% elif report_type == 'student_dashboard' %}Student Dashboard
             {% else %}Detailed Report{% endif %}
             {% if report_data %}({{ report_data|length }} records){% endif %}
         </h3>
@@ -272,6 +276,83 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+    
+    {% elif report_type == 'student_dashboard' %}
+    <!-- Student Dashboard: Individual session details with totals -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        {% for student, total in chart_data.student_totals.items() %}
+        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 1rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #007bff; display: flex; justify-content: space-between; align-items: center;">
+                <span>👨‍🎓 {{ student }}</span>
+                <small style="color: #666; font-weight: normal;">{{ chart_data.total_sessions.get(student, 0) }} sessions</small>
+            </h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem;">
+                <div style="background: #e3f2fd; padding: 0.5rem; border-radius: 4px; text-align: center;">
+                    <strong style="color: #1976d2; font-size: 1.2rem;">{{ total }}</strong>
+                    <div style="font-size: 0.8rem; color: #666;">Total Trials</div>
+                </div>
+                <div style="background: #e8f5e8; padding: 0.5rem; border-radius: 4px; text-align: center;">
+                    <strong style="color: #388e3c; font-size: 1.2rem;">{{ chart_data.total_sessions.get(student, 0) }}</strong>
+                    <div style="font-size: 0.8rem; color: #666;">Sessions</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Session Timeline -->
+    <h4 style="margin: 2rem 0 1rem 0; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">
+        📅 Session Timeline 
+        {% if chart_data.filtered_student %}
+        - {{ chart_data.filtered_student }}
+        {% endif %}
+        <small style="color: #666; font-weight: normal; margin-left: 1rem;">
+            {{ chart_data.date_range.start }} to {{ chart_data.date_range.end }}
+        </small>
+    </h4>
+    
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        {% for date, sessions in chart_data.sessions_by_date.items() %}
+        <div style="border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+            <div style="background: #007bff; color: white; padding: 0.75rem 1rem; font-weight: bold;">
+                📅 {{ date }} 
+                <small style="opacity: 0.8; margin-left: 1rem;">({{ sessions|length }} objectives worked on)</small>
+            </div>
+            <div style="padding: 1rem;">
+                <div style="display: grid; gap: 0.75rem;">
+                    {% for session in sessions %}
+                    <div style="background: #f8f9fa; border-radius: 6px; padding: 0.75rem; border-left: 4px solid 
+                        {% if session.count >= 10 %}#28a745{% elif session.count >= 5 %}#ffc107{% else %}#dc3545{% endif %};">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.25rem;">
+                            <div style="flex: 1;">
+                                <strong style="color: #007bff;">👨‍🎓 {{ session.student }}</strong>
+                                <div style="color: #555; font-size: 0.9rem; margin-top: 0.25rem;">{{ session.objective }}</div>
+                            </div>
+                            <div style="text-align: right; margin-left: 1rem;">
+                                <div style="font-size: 1.2rem; font-weight: bold; color: 
+                                    {% if session.count >= 10 %}#28a745{% elif session.count >= 5 %}#ffc107{% else %}#dc3545{% endif %};">
+                                    {{ session.count }} trials
+                                </div>
+                                <small style="color: #666;">{{ session.prompt_level }}</small>
+                            </div>
+                        </div>
+                        {% if session.notes %}
+                        <div style="background: white; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; border-left: 3px solid #17a2b8;">
+                            <small style="color: #666; font-weight: bold;">📝 Notes:</small>
+                            <div style="color: #555; font-style: italic; margin-top: 0.25rem;">{{ session.notes }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div style="text-align: center; color: #666; padding: 2rem; font-style: italic;">
+            No session data found for the selected date range.
+        </div>
+        {% endfor %}
     </div>
     {% endif %}
 </div>
