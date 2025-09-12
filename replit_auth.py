@@ -1,8 +1,10 @@
 import jwt
 import os
 import uuid
+import requests
 from functools import wraps
 from urllib.parse import urlencode
+from cryptography.hazmat.primitives import serialization
 
 from flask import g, session, redirect, request, render_template, url_for
 from flask_dance.consumer import (
@@ -120,6 +122,66 @@ def make_replit_blueprint():
 
     return replit_bp
 
+def get_jwks_keys():
+    """Fetch and cache JWKS keys from Replit's OIDC endpoint."""
+    jwks_url = "https://replit.com/oidc/jwks"
+    try:
+        response = requests.get(jwks_url, timeout=10)
+        response.raise_for_status()
+        jwks = response.json()
+        return jwks['keys']
+    except Exception as e:
+        raise ValueError(f"Failed to fetch JWKS keys: {str(e)}")
+
+def verify_jwt_token(token, audience=None):
+    """Verify JWT token signature against Replit's JWKS."""
+    try:
+        # Get JWKS keys
+        keys = get_jwks_keys()
+        
+        # Get the key ID from token header
+        header = jwt.get_unverified_header(token)
+        kid = header.get('kid')
+        
+        if not kid:
+            raise ValueError("Token missing key ID")
+        
+        # Find the matching key
+        jwk_key = None
+        for key in keys:
+            if key.get('kid') == kid:
+                jwk_key = key
+                break
+        
+        if not jwk_key:
+            raise ValueError(f"Key ID {kid} not found in JWKS")
+        
+        # Convert JWK to PEM format for verification
+        from jwt.algorithms import RSAAlgorithm
+        public_key = RSAAlgorithm.from_jwk(jwk_key)
+        
+        # Verify the token with proper signature validation
+        claims = jwt.decode(
+            token,
+            public_key,
+            algorithms=['RS256'],
+            audience=audience or os.environ.get('REPL_ID'),
+            issuer='https://replit.com/oidc'
+        )
+        
+        return claims
+        
+    except jwt.ExpiredSignatureError:
+        raise ValueError("Token has expired")
+    except jwt.InvalidAudienceError:
+        raise ValueError("Invalid token audience")
+    except jwt.InvalidIssuerError:
+        raise ValueError("Invalid token issuer")
+    except jwt.InvalidSignatureError:
+        raise ValueError("Invalid token signature")
+    except Exception as e:
+        raise ValueError(f"Token validation failed: {str(e)}")
+
 def save_user(user_claims):
     user = User()
     user.id = user_claims['sub']
@@ -133,14 +195,19 @@ def save_user(user_claims):
 
 @oauth_authorized.connect
 def logged_in(blueprint, token):
-    user_claims = jwt.decode(token['id_token'],
-                             options={"verify_signature": False})
-    user = save_user(user_claims)
-    login_user(user)
-    blueprint.token = token
-    next_url = session.pop("next_url", None)
-    if next_url is not None:
-        return redirect(next_url)
+    try:
+        # Properly verify JWT signature against Replit's JWKS
+        user_claims = verify_jwt_token(token['id_token'])
+        user = save_user(user_claims)
+        login_user(user)
+        blueprint.token = token
+        next_url = session.pop("next_url", None)
+        if next_url is not None:
+            return redirect(next_url)
+    except ValueError as e:
+        # Log the error and redirect to error page
+        print(f"JWT verification failed: {str(e)}")
+        return redirect(url_for('replit_auth.error'))
 
 @oauth_error.connect
 def handle_error(blueprint, error, error_description=None, error_uri=None):

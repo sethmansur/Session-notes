@@ -16,19 +16,22 @@ logging.basicConfig(level=logging.DEBUG)
 # Initialize Flask app
 app = Flask(__name__)
 
-# Set secret key - use different keys for production vs development
+# Set secret key - require secure key in production
 if os.environ.get("REPLIT_DEPLOYMENT") == "1":
-    # Production environment - use a secure secret key
-    app.secret_key = os.environ.get("SESSION_SECRET", "production-speech-therapy-secret-2024")
+    # Production environment - require a secure secret key
+    session_secret = os.environ.get("SESSION_SECRET")
+    if not session_secret:
+        logging.error("SESSION_SECRET environment variable is required in production but not set")
+        raise SystemExit("SESSION_SECRET environment variable must be configured for production deployment")
+    app.secret_key = session_secret
 else:
     # Development environment
     app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
 
-# Configure server name for OAuth redirects to work properly
-if os.environ.get('REPLIT_DEV_DOMAIN'):
-    app.config['SERVER_NAME'] = os.environ['REPLIT_DEV_DOMAIN']
-elif os.environ.get('REPLIT_DOMAINS'):
-    app.config['SERVER_NAME'] = os.environ['REPLIT_DOMAINS'].split(',')[0]
+# Configure server name only for production deployment to avoid localhost mismatch
+if os.environ.get('REPLIT_DEPLOYMENT') == '1':
+    if os.environ.get('REPLIT_DOMAINS'):
+        app.config['SERVER_NAME'] = os.environ['REPLIT_DOMAINS'].split(',')[0]
 
 # Configure file upload limits (10MB max)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
@@ -36,9 +39,11 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 # Configure for HTTPS on Replit
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 
-# Force Flask-Dance to use HTTPS for OAuth redirects
+# Configure OAuth transport security based on environment
 import os
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+if os.environ.get("REPLIT_DEPLOYMENT") != "1":
+    # Only enable insecure transport in development environment
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # Stripe configuration with error handling
 stripe_secret_key = os.environ.get('STRIPE_SECRET_KEY')
@@ -61,134 +66,17 @@ def file_too_large(error):
 
 # Import database and auth after app creation
 from models import db, User, Organization, Membership, Student, Objective, Session, Event, ObjectiveItem, EventSelection
-from replit_auth import login_manager
+from replit_auth import login_manager, make_replit_blueprint
 from flask_login import login_required, current_user
 from functools import wraps
 
 # Initialize login manager
 login_manager.init_app(app)
 
-# Manual OAuth implementation to fix HTTPS redirect URI issue
-@app.route('/auth/replit_auth')
-def manual_oauth_login():
-    from urllib.parse import urlencode
-    import secrets
-    import hashlib
-    import base64
-    
-    # Generate PKCE parameters
-    code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
-    code_challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(code_verifier.encode('utf-8')).digest()
-    ).decode('utf-8').rstrip('=')
-    
-    # Generate state
-    state = secrets.token_urlsafe(32)
-    
-    # Store PKCE in session for later verification
-    session['oauth_code_verifier'] = code_verifier
-    session['oauth_state'] = state
-    
-    # Get domain and force HTTPS
-    domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS', '').split(',')[0]
-    redirect_uri = f"https://{domain}/auth/replit_auth/authorized"
-    
-    # Build authorization URL with HTTPS redirect URI
-    auth_params = {
-        'response_type': 'code',
-        'client_id': os.environ.get('REPL_ID'),
-        'redirect_uri': redirect_uri,
-        'scope': 'openid profile email offline_access',
-        'state': state,
-        'code_challenge': code_challenge,
-        'code_challenge_method': 'S256',
-        'prompt': 'login consent'
-    }
-    
-    auth_url = f"https://replit.com/oidc/auth?{urlencode(auth_params)}"
-    return redirect(auth_url)
+# Register secure OAuth blueprint
+app.register_blueprint(make_replit_blueprint(), url_prefix="/auth")
 
-@app.route('/auth/replit_auth/authorized')
-def manual_oauth_callback():
-    import requests
-    import jwt
-    from flask_login import login_user
-    
-    # Verify state parameter
-    if request.args.get('state') != session.get('oauth_state'):
-        return "Invalid state parameter", 400
-    
-    # Handle errors
-    if request.args.get('error'):
-        return f"OAuth error: {request.args.get('error_description', 'Unknown error')}", 400
-    
-    # Exchange code for tokens
-    code = request.args.get('code')
-    if not code:
-        return "No authorization code received", 400
-    
-    # Get domain and force HTTPS
-    domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS', '').split(',')[0]
-    redirect_uri = f"https://{domain}/auth/replit_auth/authorized"
-    
-    token_data = {
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': redirect_uri,
-        'client_id': os.environ.get('REPL_ID'),
-        'code_verifier': session.get('oauth_code_verifier')
-    }
-    
-    token_response = requests.post('https://replit.com/oidc/token', data=token_data)
-    
-    if token_response.status_code != 200:
-        return f"Token exchange failed: {token_response.text}", 400
-    
-    tokens = token_response.json()
-    
-    # Decode ID token to get user info
-    user_claims = jwt.decode(tokens['id_token'], options={"verify_signature": False})
-    
-    # Create or update user
-    user = User.query.get(user_claims['sub'])
-    if not user:
-        user = User()
-        user.id = user_claims['sub']
-        user.trial_start_date = datetime.now()
-        user.subscription_status = 'trial'
-    
-    user.email = user_claims.get('email')
-    user.first_name = user_claims.get('first_name')
-    user.last_name = user_claims.get('last_name')
-    user.profile_image_url = user_claims.get('profile_image_url')
-    
-    db.session.merge(user)
-    db.session.commit()
-    
-    # Log in the user
-    login_user(user)
-    
-    # Clean up session
-    session.pop('oauth_state', None)
-    session.pop('oauth_code_verifier', None)
-    
-    # Redirect to app
-    return redirect('/app')
-
-@app.route('/auth/logout')
-def manual_logout():
-    from flask_login import logout_user
-    from urllib.parse import urlencode
-    
-    logout_user()
-    
-    # Redirect to Replit's logout endpoint
-    logout_params = {
-        'client_id': os.environ.get('REPL_ID'),
-        'post_logout_redirect_uri': request.url_root
-    }
-    logout_url = f"https://replit.com/oidc/session/end?{urlencode(logout_params)}"
-    return redirect(logout_url)
+# Use secure Flask-Dance OAuth implementation from replit_auth.py
 
 # Custom authentication decorators (removed duplicate - keeping the more complete version below)
 
