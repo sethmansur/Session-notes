@@ -587,6 +587,83 @@ def direct_dashboard():
     """Direct access dashboard - redirects to collect page."""
     return redirect('/direct/collect')
 
+@app.route('/direct/report')
+def direct_report():
+    """Show reports page via direct access. No authentication required."""
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
+    student_id = request.args.get('student_id', '')
+    report_type = request.args.get('type', 'by_objective')
+    
+    # Get default organization (same logic as auth version but without login check)
+    organization = Organization.query.first()
+    if not organization:
+        organization = Organization(name='Default Clinic', subdomain='default')
+        db.session.add(organization)
+        db.session.commit()
+    
+    # Get all students for the filter dropdown
+    students = Student.query.filter_by(organization_id=organization.id)\
+        .order_by(Student.first_name).all()
+    
+    # Default date range (last 30 days)
+    if not start_date:
+        start_date = (date.today().replace(day=1)).isoformat()
+    if not end_date:
+        end_date = date.today().isoformat()
+    
+    # Use the same report logic as the authenticated version
+    from sqlalchemy import func, or_, and_
+    
+    report_data = None
+    chart_data = None
+    
+    if report_type == 'summary':
+        # Summary report: show all objectives with counts (including zero)
+        report_data = db.session.query(
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            func.coalesce(func.sum(Event.count), 0).label('total_count'),
+            func.min(Session.date).label('start_date'),
+            func.max(Session.date).label('end_date')
+        ).select_from(Student)\
+         .join(Objective, Objective.student_id == Student.id)\
+         .outerjoin(Event, Event.objective_id == Objective.id)\
+         .outerjoin(Session, Event.session_id == Session.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        # Apply date filters safely using SQLAlchemy ORM filters
+        if start_date and end_date:
+            report_data = report_data.filter(
+                or_(Session.date.is_(None), 
+                    and_(Session.date >= start_date, Session.date <= end_date))
+            )
+        elif start_date:
+            report_data = report_data.filter(
+                or_(Session.date.is_(None), Session.date >= start_date)
+            )
+        elif end_date:
+            report_data = report_data.filter(
+                or_(Session.date.is_(None), Session.date <= end_date)
+            )
+        
+        # Apply student filter
+        if student_id:
+            report_data = report_data.filter(Student.id == student_id)
+        
+        report_data = report_data.group_by(Student.first_name, Objective.objective_text)\
+            .order_by(Student.first_name, Objective.objective_text).all()
+    
+    return render_template('report.html', 
+                         report_data=report_data,
+                         students=students,
+                         start_date=start_date,
+                         end_date=end_date,
+                         student_id=student_id,
+                         report_type=report_type,
+                         chart_data=chart_data,
+                         is_direct_access=True)
+
 @app.route('/direct/students')
 def direct_students():
     """Show students and objectives management page. No authentication required."""
