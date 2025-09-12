@@ -25,7 +25,7 @@ class User(UserMixin, db.Model):
     subscription_status = db.Column(db.String(20), default='trial')  # 'trial', 'active', 'past_due', 'canceled'
     stripe_customer_id = db.Column(db.String)
     stripe_subscription_id = db.Column(db.String)
-    plan_type = db.Column(db.String(20), default='starter')  # 'starter', 'pro', 'team'
+    plan_type = db.Column(db.String(20), default='freemium')  # 'freemium', 'individual', 'team'
     
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
@@ -49,8 +49,44 @@ class User(UserMixin, db.Model):
         return max(0, remaining.days)
     
     def has_active_subscription(self):
-        """Check if user has active access (trial or paid)"""
-        return self.is_trial_active() or self.subscription_status == 'active'
+        """Check if user has active access (trial, freemium, or paid)"""
+        return self.is_trial_active() or self.subscription_status == 'active' or self.plan_type == 'freemium'
+    
+    def is_freemium_user(self):
+        """Check if user is on freemium plan"""
+        return self.plan_type == 'freemium' and self.subscription_status != 'active'
+    
+    def get_student_limit(self):
+        """Get maximum number of students allowed for user's plan"""
+        if self.is_freemium_user():
+            return 4
+        else:
+            return None  # No limit for paid plans
+    
+    def get_objectives_per_student_limit(self):
+        """Get maximum number of objectives per student for user's plan"""  
+        if self.is_freemium_user():
+            return 2
+        else:
+            return None  # No limit for paid plans
+    
+    def can_add_student(self, organization_id):
+        """Check if user can add another student"""
+        if not self.is_freemium_user():
+            return True
+        
+        # Import here to avoid circular import issues
+        current_count = Student.query.filter_by(organization_id=organization_id).count()
+        return current_count < self.get_student_limit()
+    
+    def can_add_objective(self, student_id):
+        """Check if user can add another objective to a student"""
+        if not self.is_freemium_user():
+            return True
+            
+        # Import here to avoid circular import issues
+        current_count = Objective.query.filter_by(student_id=student_id).count()
+        return current_count < self.get_objectives_per_student_limit()
 
 class OAuth(OAuthConsumerMixin, db.Model):
     """OAuth token storage (required for Replit Auth)"""

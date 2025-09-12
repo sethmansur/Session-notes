@@ -175,15 +175,74 @@ def app_dashboard():
     """Authenticated app dashboard - redirects to collect page."""
     return redirect(url_for('collect'))
 
+# Pricing calculation helper
+def get_pricing_info(plan_type, billing_period='monthly', user_count=1):
+    """Calculate pricing with discounts for different plan types"""
+    base_prices = {
+        'individual_monthly': 2.99,
+        'individual_yearly': 24.99,  # ~17% savings vs monthly (2.99 * 12 = 35.88)
+        'team_monthly': 2.99,  # Base price before team discount
+        'team_yearly': 24.99   # Base price before team discount
+    }
+    
+    base_price = base_prices.get(plan_type, base_prices['individual_monthly'])
+    
+    # Calculate team discount (10% off for 3+ users)
+    if 'team' in plan_type and user_count >= 3:
+        team_discount = 0.10
+        discounted_price = base_price * (1 - team_discount)
+        total_price = discounted_price * user_count
+    else:
+        team_discount = 0.0
+        discounted_price = base_price
+        total_price = base_price * user_count
+    
+    # Calculate yearly savings percentage
+    yearly_savings_pct = 0
+    if 'yearly' in plan_type:
+        monthly_equivalent = base_prices.get(plan_type.replace('yearly', 'monthly'), 2.99) * 12
+        yearly_price = base_prices.get(plan_type, 24.99)
+        yearly_savings_pct = round(((monthly_equivalent - yearly_price) / monthly_equivalent) * 100)
+    
+    return {
+        'plan_type': plan_type,
+        'billing_period': billing_period,
+        'user_count': user_count,
+        'base_price': base_price,
+        'discounted_price': discounted_price,
+        'total_price': total_price,
+        'team_discount_pct': int(team_discount * 100),
+        'yearly_savings_pct': yearly_savings_pct,
+        'is_team_plan': 'team' in plan_type,
+        'is_yearly': 'yearly' in plan_type
+    }
+
 # Subscription management routes
 @app.route('/upgrade')
 def upgrade():
     """Upgrade page with subscription plans"""
     days_left = 0
-    if hasattr(current_user, 'subscription_status') and current_user.subscription_status == 'trial':
-        days_left = current_user.days_left_in_trial()
+    current_plan = 'freemium'  # Default for non-authenticated users
     
-    return render_template('upgrade.html', days_left=days_left)
+    if current_user.is_authenticated:
+        if current_user.subscription_status == 'trial':
+            days_left = current_user.days_left_in_trial()
+            current_plan = 'trial'
+        else:
+            current_plan = current_user.plan_type
+    
+    # Calculate pricing info for display
+    pricing = {
+        'individual_monthly': get_pricing_info('individual_monthly'),
+        'individual_yearly': get_pricing_info('individual_yearly'),
+        'team_monthly': get_pricing_info('team_monthly', user_count=3),  # Show 3-user example
+        'team_yearly': get_pricing_info('team_yearly', user_count=3)     # Show 3-user example
+    }
+    
+    return render_template('upgrade.html', 
+                         days_left=days_left, 
+                         current_plan=current_plan,
+                         pricing=pricing)
 
 @app.route('/create-checkout-session', methods=['POST'])
 @require_subscription  
@@ -196,14 +255,20 @@ def create_checkout_session():
         return jsonify({'error': 'Payment processing not configured'}), 500
     
     data = request.get_json()
-    plan_type = data.get('plan_type', 'starter')
+    plan_type = data.get('plan_type', 'individual_monthly')
+    billing_period = data.get('billing_period', 'monthly')  # 'monthly' or 'yearly'
+    user_count = data.get('user_count', 1)  # For team plans
     
     # Define price IDs for each plan (you'll need to create these in Stripe)
     price_ids = {
-        'starter': os.environ.get('STRIPE_STARTER_PRICE_ID', 'price_starter'),
-        'pro': os.environ.get('STRIPE_PRO_PRICE_ID', 'price_pro'), 
-        'team': os.environ.get('STRIPE_TEAM_PRICE_ID', 'price_team')
+        'individual_monthly': os.environ.get('STRIPE_INDIVIDUAL_MONTHLY_ID', 'price_individual_monthly'),
+        'individual_yearly': os.environ.get('STRIPE_INDIVIDUAL_YEARLY_ID', 'price_individual_yearly'),
+        'team_monthly': os.environ.get('STRIPE_TEAM_MONTHLY_ID', 'price_team_monthly'),
+        'team_yearly': os.environ.get('STRIPE_TEAM_YEARLY_ID', 'price_team_yearly')
     }
+    
+    # Calculate pricing and discounts
+    pricing_info = get_pricing_info(plan_type, billing_period, user_count)
     
     try:
         checkout_params = {
@@ -363,6 +428,357 @@ def health_check():
         app.logger.error(f"Health check failed: {str(e)}")
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
+# ===== DIRECT ACCESS ROUTES (No authentication required) =====
+# These routes provide bypass access for trusted users like Sam
+
+@app.route('/direct')
+def direct_dashboard():
+    """Direct access dashboard - redirects to collect page."""
+    return redirect('/direct/collect')
+
+@app.route('/direct/students')
+def direct_students():
+    """Show students and objectives management page. No authentication required."""
+    # Get default organization (same logic as auth version but without login check)
+    organization = Organization.query.first()
+    if not organization:
+        # Create default organization if none exists
+        organization = Organization(name='Default Clinic', subdomain='default')
+        db.session.add(organization)
+        db.session.commit()
+    
+    # Get all students with their objectives using proper ORM queries
+    students_data = Student.query.filter_by(organization_id=organization.id)\
+        .options(db.joinedload(Student.objectives))\
+        .order_by(Student.first_name).all()
+    
+    # Format data for template
+    students = []
+    for student in students_data:
+        student_dict = {
+            'id': student.id,
+            'first_name': student.first_name,
+            'objectives': []
+        }
+        
+        for objective in student.objectives:
+            student_dict['objectives'].append({
+                'id': objective.id,
+                'text': objective.objective_text
+            })
+        
+        students.append(student_dict)
+    
+    return render_template('students.html', students=students, is_direct_access=True)
+
+@app.route('/direct/students/add', methods=['POST'])
+def direct_add_student():
+    """Add a new student via direct access."""
+    first_name = request.form.get('first_name', '').strip()
+    
+    if not first_name:
+        return jsonify({'error': 'First name is required'}), 400
+    
+    try:
+        # Get default organization
+        organization = Organization.query.first()
+        if not organization:
+            organization = Organization(name="Default Clinic", subdomain="default")
+            db.session.add(organization)
+            db.session.commit()
+        
+        # Check if student already exists in this organization
+        existing_student = Student.query.filter_by(organization_id=organization.id, first_name=first_name).first()
+        if existing_student:
+            return jsonify({'error': 'Student name already exists'}), 400
+        
+        # Create new student
+        student = Student(organization_id=organization.id, first_name=first_name)
+        db.session.add(student)
+        db.session.commit()
+        return jsonify({'success': True, 'student_id': student.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/direct/collect')
+def direct_collect():
+    """Show data collection page via direct access."""
+    # Get default organization
+    organization = Organization.query.first()
+    if not organization:
+        organization = Organization(name="Default Clinic", subdomain="default")
+        db.session.add(organization)
+        db.session.commit()
+    
+    # Get students with their objectives
+    students_data = Student.query.filter_by(organization_id=organization.id)\
+                           .options(db.joinedload(Student.objectives))\
+                           .order_by(Student.first_name).all()
+    
+    # Format students data for JSON serialization
+    students = []
+    for student in students_data:
+        student_dict = {
+            'id': student.id,
+            'first_name': student.first_name,
+            'objectives': []
+        }
+        
+        for objective in student.objectives:
+            student_dict['objectives'].append({
+                'id': objective.id,
+                'objective_text': objective.objective_text
+            })
+        
+        students.append(student_dict)
+    
+    # Get today's date for the session
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    return render_template('collect.html', 
+                         students=students, 
+                         session_date=today,
+                         is_direct_access=True)
+
+@app.route('/direct/objectives/save', methods=['POST'])
+def direct_save_objectives():
+    """Save objectives for a student via direct access."""
+    student_id = request.form.get('student_id')
+    objectives_text = request.form.get('objectives', '').strip()
+    
+    if not student_id:
+        return jsonify({'error': 'Student ID is required'}), 400
+        
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+    
+    try:
+        # Delete existing objectives
+        Objective.query.filter_by(student_id=student_id).delete()
+        
+        # Parse and add new objectives
+        if objectives_text:
+            objective_lines = [line.strip() for line in objectives_text.split('\n') if line.strip()]
+            for line in objective_lines:
+                # Remove leading numbers/bullets if present
+                clean_text = re.sub(r'^\d+[\.\)]\s*', '', line.strip())
+                clean_text = re.sub(r'^\*\s*', '', clean_text.strip())
+                
+                if clean_text:
+                    objective = Objective(student_id=student_id, objective_text=clean_text)
+                    db.session.add(objective)
+        
+        db.session.commit()
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/direct/event/increment', methods=['POST'])
+def direct_increment_event():
+    """Increment count for an objective via direct access."""
+    data = request.get_json()
+    student_id = data.get('student_id')
+    objective_id = data.get('objective_id')
+    date_str = data.get('date')
+    
+    if not all([student_id, objective_id, date_str]):
+        return jsonify({'error': 'Missing required data'}), 400
+    
+    try:
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Get or create session
+        session = Session.query.filter_by(date=date_obj).first()
+        if not session:
+            session = Session(date=date_obj)
+            db.session.add(session)
+            db.session.commit()
+        
+        # Get or create event
+        event = Event.query.filter_by(
+            session_id=session.id,
+            student_id=student_id,
+            objective_id=objective_id
+        ).first()
+        
+        if event:
+            event.count += 1
+        else:
+            event = Event(
+                session_id=session.id,
+                student_id=student_id,
+                objective_id=objective_id,
+                count=1,
+                prompt_level='Independent'
+            )
+            db.session.add(event)
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'new_count': event.count})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/direct/event/decrement', methods=['POST'])
+def direct_decrement_event():
+    """Decrement count for an objective via direct access."""
+    data = request.get_json()
+    student_id = data.get('student_id')
+    objective_id = data.get('objective_id')
+    date_str = data.get('date')
+    
+    if not all([student_id, objective_id, date_str]):
+        return jsonify({'error': 'Missing required data'}), 400
+    
+    try:
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Get session
+        session = Session.query.filter_by(date=date_obj).first()
+        if not session:
+            return jsonify({'success': True, 'new_count': 0})
+        
+        # Get event
+        event = Event.query.filter_by(
+            session_id=session.id,
+            student_id=student_id,
+            objective_id=objective_id
+        ).first()
+        
+        if event and event.count > 0:
+            event.count -= 1
+            if event.count == 0:
+                db.session.delete(event)
+            new_count = event.count if event.count > 0 else 0
+        else:
+            new_count = 0
+        
+        db.session.commit()
+        return jsonify({'success': True, 'new_count': new_count})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/direct/event/counts', methods=['GET'])
+def direct_get_counts():
+    """Get existing counts for a date and students via direct access."""
+    date_str = request.args.get('date')
+    student_ids = request.args.getlist('student_id')
+    
+    if not date_str:
+        return jsonify({'error': 'Date is required'}), 400
+    
+    try:
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Get session for this date
+        session = Session.query.filter_by(date=date_obj).first()
+        if not session:
+            return jsonify({'counts': {}})
+        
+        # Build query for events
+        query = Event.query.filter_by(session_id=session.id)
+        if student_ids:
+            query = query.filter(Event.student_id.in_(student_ids))
+        
+        events = query.all()
+        
+        # Format results
+        counts = {}
+        for event in events:
+            key = f"{event.student_id}_{event.objective_id}"
+            counts[key] = {
+                'count': event.count,
+                'prompt_level': event.prompt_level or 'Independent'
+            }
+        
+        return jsonify({'counts': counts})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/direct/print/sheet')
+def direct_print_data_collection_sheet():
+    """Generate printable data collection sheet via direct access."""
+    try:
+        # Get parameters
+        student_ids_param = request.args.get('student_ids', '')
+        session_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        boxes_per_objective = int(request.args.get('boxes', 10))
+        
+        # Parse student IDs
+        if not student_ids_param:
+            return "No students selected", 400
+        
+        try:
+            student_id_list = [int(id.strip()) for id in student_ids_param.split(',') if id.strip()]
+        except ValueError:
+            return "Invalid student IDs", 400
+        
+        # Get default organization
+        organization = Organization.query.first()
+        if not organization:
+            organization = Organization(name="Default Clinic", subdomain="default")
+            db.session.add(organization)
+            db.session.commit()
+            
+        # Fetch students with their objectives
+        students = Student.query.filter(
+            Student.id.in_(student_id_list),
+            Student.organization_id == organization.id
+        ).options(db.joinedload(Student.objectives)).order_by(Student.first_name).all()
+        
+        if not students:
+            return "No students found", 404
+            
+        # Distribute students across pages - max 4 per page with even distribution
+        pages = []
+        total_students = len(students)
+        max_per_page = 4
+        
+        if total_students <= max_per_page:
+            # Single page for 4 or fewer students
+            pages = [students]
+        else:
+            # Even distribution across pages
+            num_pages = (total_students + max_per_page - 1) // max_per_page
+            base_per_page = total_students // num_pages
+            extra_students = total_students % num_pages
+            
+            start_idx = 0
+            for page_idx in range(num_pages):
+                # First 'extra_students' pages get one extra student
+                students_this_page = base_per_page + (1 if page_idx < extra_students else 0)
+                end_idx = start_idx + students_this_page
+                pages.append(students[start_idx:end_idx])
+                start_idx = end_idx
+            
+        # Prepare template data
+        template_data = {
+            'pages': pages,
+            'session_date': session_date,
+            'boxes_per_objective': boxes_per_objective,
+            'therapist_name': '',
+            'organization_name': organization.name,
+            'therapy_type': request.args.get('therapy_type', 'Speech/OT/PT Data Collection'),
+            'page_subtitle': request.args.get('page_subtitle', f'{total_students} Students')
+        }
+        
+        return render_template('print_sheet.html', **template_data)
+        
+    except Exception as e:
+        logging.error(f"Error generating direct print sheet: {e}")
+        return f"Error generating print sheet: {str(e)}", 500
+
+# ===== APP ROUTES (Protected by subscription) =====
+
 @app.route('/app/students')
 def students():
     """Show students and objectives management page. No login required."""
@@ -398,6 +814,7 @@ def students():
     return render_template('students.html', students=students)
 
 @app.route('/app/students/add', methods=['POST'])
+@require_subscription
 def add_student():
     """Add a new student."""
     first_name = request.form.get('first_name', '').strip()
@@ -412,6 +829,16 @@ def add_student():
             organization = Organization(name="Default Clinic", subdomain="default")
             db.session.add(organization)
             db.session.commit()
+        
+        # Check freemium limits for authenticated users
+        if current_user.is_authenticated and not current_user.can_add_student(organization.id):
+            student_limit = current_user.get_student_limit()
+            return jsonify({
+                'error': f'Freemium plan limited to {student_limit} students. Upgrade to add more students.',
+                'upgrade_required': True,
+                'current_plan': 'freemium',
+                'limit_type': 'students'
+            }), 403
         
         # Check if student already exists in this organization
         existing_student = Student.query.filter_by(organization_id=organization.id, first_name=first_name).first()
@@ -446,6 +873,7 @@ def delete_student():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objectives/save', methods=['POST'])
+@require_subscription
 def save_objectives():
     """Save objectives for a student."""
     student_id = request.form.get('student_id')
@@ -455,26 +883,37 @@ def save_objectives():
         return jsonify({'error': 'Student ID is required'}), 400
     
     try:
-        # Delete existing objectives for this student
-        Objective.query.filter_by(student_id=student_id).delete()
-        
-        # Parse and save new objectives
+        # Parse objectives to check freemium limits first
+        objectives = []
         if objectives_text:
             lines = [line.strip() for line in objectives_text.split('\n') if line.strip()]
             
             # Handle numbered lists (remove numbers)
-            objectives = []
             for line in lines:
                 # Remove leading numbers like "1.", "2.", etc.
                 import re
                 cleaned = re.sub(r'^\d+\.\s*', '', line).strip()
                 if cleaned:
                     objectives.append(cleaned)
-            
-            # Insert new objectives
-            for obj_text in objectives:
-                objective = Objective(student_id=student_id, objective_text=obj_text)
-                db.session.add(objective)
+        
+        # Check freemium limits for authenticated users
+        if current_user.is_authenticated and current_user.is_freemium_user():
+            objectives_limit = current_user.get_objectives_per_student_limit()
+            if len(objectives) > objectives_limit:
+                return jsonify({
+                    'error': f'Freemium plan limited to {objectives_limit} objectives per student. You tried to add {len(objectives)} objectives.',
+                    'upgrade_required': True,
+                    'current_plan': 'freemium',
+                    'limit_type': 'objectives'
+                }), 403
+        
+        # Delete existing objectives for this student
+        Objective.query.filter_by(student_id=student_id).delete()
+        
+        # Insert new objectives
+        for obj_text in objectives:
+            objective = Objective(student_id=student_id, objective_text=obj_text)
+            db.session.add(objective)
         
         db.session.commit()
         return jsonify({'success': True})
