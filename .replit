@@ -5,7 +5,7 @@ integrations = ["python_database:1.0.0", "python_log_in_with_replit:1.0.0", "fla
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "libiconv", "libxcrypt", "openssl", "pkg-config", "rustc"]
+packages = ["cargo", "glibcLocales", "libiconv", "libxcrypt", "openssl", "pkg-config", "rustc"]
 
 [workflows]
 runButton = "Project"
@@ -36,15 +36,11 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 34573
+localPort = 5001
 externalPort = 3001
 
 [[ports]]
-localPort = 36727
-externalPort = 3002
-
-[[ports]]
-localPort = 38597
+localPort = 41567
 externalPort = 3000
 
 [deployment]
