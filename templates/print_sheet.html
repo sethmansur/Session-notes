@@ -76,10 +76,11 @@
             font-size: 11px;
         }
 
-        /* Student Grid - Optimized layout for all students on one page */
+        /* Student Grid - 2x2 layout for 4 students */
         .students-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(2.4in, 1fr));
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
             gap: 0.08in;
             max-height: 8.5in;
         }
@@ -209,10 +210,11 @@
             background: #0056b3;
         }
 
-        /* Responsive grid for optimal fit */
+        /* Ensure 2x2 grid layout for print */
         @media print {
             .students-grid {
-                grid-template-columns: repeat(auto-fit, minmax(2.3in, 1fr));
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: 1fr 1fr;
             }
         }
     </style>
