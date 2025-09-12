@@ -282,8 +282,7 @@
                         <div class="count-controls">
                             <button class="minus-btn" onclick="decrementCount(${selectedStudent.id}, ${objective.id}, this)">−</button>
                             <input type="number" class="count-input" id="count-${selectedStudent.id}-${objective.id}" value="0" min="0" 
-                                   onchange="updateCountManually(${selectedStudent.id}, ${objective.id}, this)" 
-                                   onblur="updateCountManually(${selectedStudent.id}, ${objective.id}, this)">
+                                   onchange="updateCountManually(${selectedStudent.id}, ${objective.id}, this)">
                             <button class="plus-btn" onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)">+</button>
                             <select class="prompt-level" id="prompt-${selectedStudent.id}-${objective.id}" 
                                     onchange="updatePromptLevel(${selectedStudent.id}, ${objective.id}, this)">

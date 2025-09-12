@@ -685,6 +685,7 @@ def decrement_event():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/event/update', methods=['POST'])
+@require_subscription
 def update_event():
     """Update count and prompt level for an objective on a date."""
     data = request.get_json()
