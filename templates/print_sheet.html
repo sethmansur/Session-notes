@@ -76,29 +76,29 @@
             font-size: 11px;
         }
 
-        /* Student Grid - Compact layout for all students on one page */
+        /* Student Grid - Optimized layout for all students on one page */
         .students-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(2.2in, 1fr));
-            gap: 0.1in;
+            grid-template-columns: repeat(auto-fit, minmax(2.4in, 1fr));
+            gap: 0.08in;
             max-height: 8.5in;
         }
 
-        /* Individual Student Panel - Compact */
+        /* Individual Student Panel - Optimized */
         .student-panel {
             border: 1px solid #000;
-            padding: 0.08in;
+            padding: 0.1in;
             break-inside: avoid;
             font-size: 9px;
         }
 
         .student-name {
-            font-size: 11px;
+            font-size: 12px;
             font-weight: bold;
             text-align: center;
-            padding: 0.05in;
+            padding: 0.06in;
             border-bottom: 1px solid #000;
-            margin-bottom: 0.08in;
+            margin-bottom: 0.1in;
             background: #f0f0f0;
         }
 
@@ -112,34 +112,34 @@
             display: flex;
             align-items: flex-start;
             border-bottom: 1px solid #ddd;
-            padding-bottom: 0.02in;
-            margin-bottom: 0.02in;
-            min-height: 0.25in;
+            padding-bottom: 0.03in;
+            margin-bottom: 0.03in;
+            min-height: 0.4in;
         }
 
         .objective-text {
             flex: 1;
-            font-size: 8px;
+            font-size: 9px;
             padding-right: 0.05in;
             line-height: 1.2;
-            max-width: calc(100% - 2.5in); /* Reserve space for boxes */
+            max-width: calc(100% - 3.2in); /* Reserve space for boxes */
         }
 
         .objective-text.long {
-            font-size: 7px;
+            font-size: 8px;
         }
 
-        /* Tick Boxes - Compact sizing */
+        /* Tick Boxes - Optimized sizing */
         .tick-boxes {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.02in;
-            min-width: 2.2in;
+            gap: 0.03in;
+            min-width: 2.8in;
         }
 
         .tick-box {
-            width: 0.25in;
-            height: 0.25in;
+            width: 0.4in;
+            height: 0.4in;
             border: 1px solid #000;
             display: inline-block;
             background: white;
@@ -147,15 +147,15 @@
 
         /* Total Column */
         .total-box {
-            width: 0.4in;
-            height: 0.25in;
+            width: 0.5in;
+            height: 0.4in;
             border: 1px solid #000;
             margin-left: 0.05in;
             display: inline-block;
             background: #f9f9f9;
             text-align: center;
-            font-size: 6px;
-            line-height: 0.25in;
+            font-size: 8px;
+            line-height: 0.4in;
         }
 
         /* Notes area - Compact */
@@ -209,14 +209,11 @@
             background: #0056b3;
         }
 
-        /* All students on one page - ultra compact mode */
-        .students-grid {
-            grid-template-columns: repeat(auto-fit, minmax(2in, 1fr));
-        }
-        
-        /* Limit objectives shown per student for space */
-        .objective-row:nth-child(n+4) {
-            display: none;
+        /* Responsive grid for optimal fit */
+        @media print {
+            .students-grid {
+                grid-template-columns: repeat(auto-fit, minmax(2.3in, 1fr));
+            }
         }
     </style>
 </head>
@@ -271,10 +268,10 @@
                             {% endif %}
                         </div>
                         <div class="tick-boxes">
-                            {% for i in range(boxes_per_objective) %}
+                            {% for i in range(6) %}
                             <div class="tick-box"></div>
                             {% endfor %}
-                            <div class="total-box">Tot</div>
+                            <div class="total-box">Total</div>
                         </div>
                     </div>
                     {% endfor %}
