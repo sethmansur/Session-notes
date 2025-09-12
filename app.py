@@ -2343,7 +2343,7 @@ def report():
 @app.route('/app/report.pdf')
 @require_subscription
 def report_pdf():
-    """Export report as PDF."""
+    """Export report as PDF for ALL report types."""
     try:
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -2397,42 +2397,315 @@ def report_pdf():
             story.append(Paragraph(detail, styles['Normal']))
         story.append(Spacer(1, 20))
         
-        # Get report data (simplified version)
-        event_query = db.session.query(Event)\
-            .join(Session, Event.session_id == Session.id)\
-            .join(Student, Event.student_id == Student.id)\
-            .join(Objective, Event.objective_id == Objective.id)\
-            .filter(Student.organization_id == organization.id)
+        from sqlalchemy import func, or_, and_
         
-        # Apply filters
-        if start_date:
-            event_query = event_query.filter(Session.date >= start_date)
-        if end_date:
-            event_query = event_query.filter(Session.date <= end_date)
-        if student_id:
-            event_query = event_query.filter(Student.id == student_id)
-        
-        event_data = event_query.with_entities(
-            Session.date.label('date'),
-            Student.first_name.label('student'),
-            Objective.objective_text.label('objective'),
-            Event.count.label('count'),
-            Event.prompt_level.label('prompt_level')
-        ).order_by(Session.date.desc(), Student.first_name).all()
-        
-        if event_data:
-            # Create table data
-            data = [['Date', 'Student', 'Objective', 'Count', 'Prompt Level']]
-            for row in event_data:
-                obj_text = row.objective[:50] + '...' if len(row.objective) > 50 else row.objective
-                data.append([
-                    str(row.date),
-                    row.student,
-                    obj_text,
-                    str(row.count),
-                    row.prompt_level or 'Not Recorded'
-                ])
+        # Generate data based on report type - reuse logic from CSV export
+        if report_type == 'summary':
+            # Summary report
+            query = db.session.query(Event)\
+                .join(Session, Event.session_id == Session.id)\
+                .join(Student, Event.student_id == Student.id)\
+                .join(Objective, Event.objective_id == Objective.id)
             
+            if start_date:
+                query = query.filter(Session.date >= start_date)
+            if end_date:
+                query = query.filter(Session.date <= end_date)
+            if student_id:
+                query = query.filter(Student.id == student_id)
+            
+            report_data = query.with_entities(
+                Student.first_name.label('student'),
+                Objective.objective_text.label('objective'),
+                func.sum(Event.count).label('total_count'),
+                func.min(Session.date).label('start_date'),
+                func.max(Session.date).label('end_date')
+            ).group_by(Student.id, Objective.id)\
+             .order_by(Student.first_name, Objective.objective_text).all()
+            
+            headers = ['Student', 'Objective', 'Total Count', 'Start Date', 'End Date']
+            data = [headers]
+            for row in report_data:
+                obj_text = row.objective[:40] + '...' if len(row.objective) > 40 else row.objective
+                data.append([row.student, obj_text, str(row.total_count), str(row.start_date), str(row.end_date)])
+                
+        elif report_type == 'by_objective':
+            # Detailed by objective report
+            query = db.session.query(Event)\
+                .join(Session, Event.session_id == Session.id)\
+                .join(Student, Event.student_id == Student.id)\
+                .join(Objective, Event.objective_id == Objective.id)
+            
+            if start_date:
+                query = query.filter(Session.date >= start_date)
+            if end_date:
+                query = query.filter(Session.date <= end_date)
+            if student_id:
+                query = query.filter(Student.id == student_id)
+            
+            report_data = query.with_entities(
+                Session.date.label('date'),
+                Student.first_name.label('student'),
+                Objective.objective_text.label('objective'),
+                Event.count.label('count'),
+                Event.prompt_level.label('prompt_level'),
+                Event.notes.label('notes')
+            ).order_by(Session.date.desc(), Student.first_name, Objective.objective_text).all()
+            
+            headers = ['Date', 'Student', 'Objective', 'Count', 'Prompt Level']
+            data = [headers]
+            for row in report_data:
+                obj_text = row.objective[:30] + '...' if len(row.objective) > 30 else row.objective
+                data.append([str(row.date), row.student, obj_text, str(row.count), row.prompt_level or 'Independent'])
+                
+        elif report_type == 'student_progress':
+            # Student progress cards
+            summary_query = db.session.query(
+                Student.first_name.label('student'),
+                func.coalesce(func.sum(Event.count), 0).label('total_count')
+            ).select_from(Student)\
+             .outerjoin(Objective, Objective.student_id == Student.id)\
+             .outerjoin(Event, Event.objective_id == Objective.id)\
+             .outerjoin(Session, Event.session_id == Session.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            if start_date and end_date:
+                summary_query = summary_query.filter(
+                    or_(Session.date.is_(None), 
+                        and_(Session.date >= start_date, Session.date <= end_date))
+                )
+            if student_id:
+                summary_query = summary_query.filter(Student.id == student_id)
+            
+            summary_data = summary_query.group_by(Student.id).all()
+            
+            headers = ['Student', 'Total Attempts', 'Progress Level']
+            data = [headers]
+            for row in summary_data:
+                progress_level = 'Not Started' if row.total_count == 0 else \
+                               'Beginning' if row.total_count < 5 else \
+                               'Developing' if row.total_count < 15 else \
+                               'Proficient' if row.total_count < 30 else 'Mastered'
+                data.append([row.student, str(row.total_count), progress_level])
+                
+        elif report_type == 'daily_summary':
+            # Daily session breakdown
+            daily_query = db.session.query(
+                Session.date,
+                func.sum(Event.count).label('total_attempts'),
+                func.count(Event.id.distinct()).label('goal_instances'),
+                func.count(Student.id.distinct()).label('students_seen')
+            ).select_from(Session)\
+             .join(Event, Event.session_id == Session.id)\
+             .join(Student, Event.student_id == Student.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            if start_date and end_date:
+                daily_query = daily_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            
+            daily_data = daily_query.group_by(Session.date).order_by(Session.date.desc()).all()
+            headers = ['Date', 'Total Attempts', 'Goal Instances', 'Students Seen']
+            data = [headers]
+            for row in daily_data:
+                data.append([str(row.date), str(row.total_attempts), str(row.goal_instances), str(row.students_seen)])
+                
+        elif report_type == 'goal_tracking':
+            # Goal achievement tracker
+            summary_query = db.session.query(
+                Student.first_name.label('student'),
+                Objective.objective_text.label('objective'),
+                func.coalesce(func.sum(Event.count), 0).label('total_count')
+            ).select_from(Student)\
+             .join(Objective, Objective.student_id == Student.id)\
+             .outerjoin(Event, Event.objective_id == Objective.id)\
+             .outerjoin(Session, Event.session_id == Session.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            if start_date and end_date:
+                summary_query = summary_query.filter(
+                    or_(Session.date.is_(None), 
+                        and_(Session.date >= start_date, Session.date <= end_date))
+                )
+            if student_id:
+                summary_query = summary_query.filter(Student.id == student_id)
+            
+            summary_data = summary_query.group_by(Student.id, Objective.id).all()
+            
+            headers = ['Student', 'Objective', 'Count', 'Progress']
+            data = [headers]
+            for row in summary_data:
+                progress = 'Not Started' if row.total_count == 0 else \
+                          'Beginning' if row.total_count < 5 else \
+                          'Developing' if row.total_count < 15 else \
+                          'Proficient' if row.total_count < 30 else 'Mastered'
+                obj_text = row.objective[:35] + '...' if len(row.objective) > 35 else row.objective
+                data.append([row.student, obj_text, str(row.total_count), progress])
+                
+        elif report_type == 'therapist_notes':
+            # Notes view
+            notes_query = db.session.query(
+                Session.date,
+                Student.first_name.label('student'),
+                Event.notes,
+                func.count(Event.id).label('session_activities')
+            ).select_from(Event)\
+             .join(Session, Event.session_id == Session.id)\
+             .join(Student, Event.student_id == Student.id)\
+             .filter(Student.organization_id == organization.id)\
+             .filter(Event.notes.isnot(None))\
+             .filter(Event.notes != '')
+            
+            if start_date and end_date:
+                notes_query = notes_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            
+            notes_data = notes_query.group_by(Session.date, Student.first_name, Event.notes)\
+                                   .order_by(Session.date.desc()).all()
+            headers = ['Date', 'Student', 'Notes', 'Activities']
+            data = [headers]
+            for row in notes_data:
+                notes_text = row.notes[:60] + '...' if len(row.notes) > 60 else row.notes
+                data.append([str(row.date), row.student, notes_text, str(row.session_activities)])
+                
+        elif report_type == 'data_grid':
+            # Grid format - students x objectives
+            summary_query = db.session.query(
+                Student.first_name.label('student'),
+                Objective.objective_text.label('objective'),
+                func.coalesce(func.sum(Event.count), 0).label('total_count')
+            ).select_from(Student)\
+             .join(Objective, Objective.student_id == Student.id)\
+             .outerjoin(Event, Event.objective_id == Objective.id)\
+             .outerjoin(Session, Event.session_id == Session.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            if start_date and end_date:
+                summary_query = summary_query.filter(
+                    or_(Session.date.is_(None), 
+                        and_(Session.date >= start_date, Session.date <= end_date))
+                )
+            if student_id:
+                summary_query = summary_query.filter(Student.id == student_id)
+            
+            summary_data = summary_query.group_by(Student.id, Objective.id).all()
+            headers = ['Student', 'Objective', 'Count']
+            data = [headers]
+            for row in summary_data:
+                obj_text = row.objective[:40] + '...' if len(row.objective) > 40 else row.objective
+                data.append([row.student, obj_text, str(row.total_count)])
+                
+        elif report_type == 'student_dashboard':
+            # Session details by date
+            dashboard_query = db.session.query(
+                Session.date,
+                Student.first_name.label('student'),
+                Objective.objective_text.label('objective'),
+                Event.count,
+                Event.prompt_level,
+                Event.notes
+            ).select_from(Event)\
+             .join(Session, Event.session_id == Session.id)\
+             .join(Student, Event.student_id == Student.id)\
+             .join(Objective, Event.objective_id == Objective.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            if start_date and end_date:
+                dashboard_query = dashboard_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            if student_id:
+                dashboard_query = dashboard_query.filter(Student.id == student_id)
+            
+            session_details = dashboard_query.order_by(Session.date.desc(), Student.first_name).all()
+            headers = ['Date', 'Student', 'Objective', 'Count', 'Prompt Level']
+            data = [headers]
+            for row in session_details:
+                obj_text = row.objective[:30] + '...' if len(row.objective) > 30 else row.objective
+                data.append([str(row.date), row.student, obj_text, str(row.count), 
+                            row.prompt_level or 'Independent'])
+                
+        elif report_type == 'comprehensive_dashboard':
+            if student_id:
+                # Individual student detailed dashboard
+                student_events = db.session.query(
+                    Session.date,
+                    Objective.objective_text,
+                    Event.count,
+                    Event.prompt_level,
+                    Event.notes
+                ).select_from(Event)\
+                 .join(Session, Event.session_id == Session.id)\
+                 .join(Objective, Event.objective_id == Objective.id)\
+                 .filter(Event.student_id == student_id)
+                
+                if start_date and end_date:
+                    student_events = student_events.filter(
+                        and_(Session.date >= start_date, Session.date <= end_date)
+                    )
+                
+                events_data = student_events.order_by(Session.date.desc()).all()
+                headers = ['Date', 'Objective', 'Count', 'Prompt Level']
+                data = [headers]
+                for row in events_data:
+                    obj_text = row.objective_text[:40] + '...' if len(row.objective_text) > 40 else row.objective_text
+                    data.append([str(row.date), obj_text, str(row.count), 
+                                row.prompt_level or 'Independent'])
+            else:
+                # Organization overview
+                all_events = db.session.query(
+                    Student.first_name,
+                    func.sum(Event.count).label('total_attempts'),
+                    func.count(Session.date.distinct()).label('sessions'),
+                    func.count(Event.objective_id.distinct()).label('objectives')
+                ).select_from(Event)\
+                 .join(Student, Event.student_id == Student.id)\
+                 .join(Session, Event.session_id == Session.id)\
+                 .filter(Student.organization_id == organization.id)
+                
+                if start_date and end_date:
+                    all_events = all_events.filter(
+                        and_(Session.date >= start_date, Session.date <= end_date)
+                    )
+                
+                student_summaries = all_events.group_by(Student.id).all()
+                headers = ['Student', 'Total Attempts', 'Sessions', 'Objectives']
+                data = [headers]
+                for s in student_summaries:
+                    data.append([s.first_name, str(s.total_attempts), str(s.sessions), str(s.objectives)])
+        
+        else:
+            # Fallback to by_objective for unknown types
+            query = db.session.query(Event)\
+                .join(Session, Event.session_id == Session.id)\
+                .join(Student, Event.student_id == Student.id)\
+                .join(Objective, Event.objective_id == Objective.id)
+            
+            if start_date:
+                query = query.filter(Session.date >= start_date)
+            if end_date:
+                query = query.filter(Session.date <= end_date)
+            if student_id:
+                query = query.filter(Student.id == student_id)
+            
+            report_data = query.with_entities(
+                Session.date.label('date'),
+                Student.first_name.label('student'),
+                Objective.objective_text.label('objective'),
+                Event.count.label('count'),
+                Event.prompt_level.label('prompt_level')
+            ).order_by(Session.date.desc(), Student.first_name).all()
+            
+            headers = ['Date', 'Student', 'Objective', 'Count', 'Prompt Level']
+            data = [headers]
+            for row in report_data:
+                obj_text = row.objective[:40] + '...' if len(row.objective) > 40 else row.objective
+                data.append([str(row.date), row.student, obj_text, str(row.count), row.prompt_level or 'Independent'])
+        
+        # Create and add table if we have data
+        if len(data) > 1:  # More than just headers
             # Create table
             table = Table(data)
             table.setStyle(TableStyle([
@@ -2470,28 +2743,39 @@ def report_pdf():
 
 @app.route('/app/report.csv')
 def report_csv():
-    """Export report as CSV."""
+    """Export report as CSV for ALL report types."""
     start_date = request.args.get('start_date', '')
     end_date = request.args.get('end_date', '')
     student_id = request.args.get('student_id', '')
     report_type = request.args.get('type', 'by_objective')
     
-    # Build base query with joins
-    query = db.session.query(Event)\
-        .join(Session, Event.session_id == Session.id)\
-        .join(Student, Event.student_id == Student.id)\
-        .join(Objective, Event.objective_id == Objective.id)
+    # Get default organization
+    organization = Organization.query.first()
+    if not organization:
+        organization = Organization(name="Default Clinic", subdomain="default")
+        db.session.add(organization)
+        db.session.commit()
     
-    # Apply filters
-    if start_date:
-        query = query.filter(Session.date >= start_date)
-    if end_date:
-        query = query.filter(Session.date <= end_date)
-    if student_id:
-        query = query.filter(Student.id == student_id)
+    # Get all students for filtering
+    students = Student.query.filter_by(organization_id=organization.id).order_by(Student.first_name).all()
     
+    from sqlalchemy import func, or_, and_
+    
+    # Generate data based on report type
     if report_type == 'summary':
-        from sqlalchemy import func
+        # Existing summary logic
+        query = db.session.query(Event)\
+            .join(Session, Event.session_id == Session.id)\
+            .join(Student, Event.student_id == Student.id)\
+            .join(Objective, Event.objective_id == Objective.id)
+        
+        if start_date:
+            query = query.filter(Session.date >= start_date)
+        if end_date:
+            query = query.filter(Session.date <= end_date)
+        if student_id:
+            query = query.filter(Student.id == student_id)
+        
         report_data = query.with_entities(
             Student.first_name.label('student'),
             Objective.objective_text.label('objective'),
@@ -2501,7 +2785,248 @@ def report_csv():
         ).group_by(Student.id, Objective.id)\
          .order_by(Student.first_name, Objective.objective_text).all()
         headers = ['Student', 'Objective', 'Total Count', 'Start Date', 'End Date']
+        rows = [[row.student, row.objective, row.total_count, row.start_date, row.end_date] for row in report_data]
+        
+    elif report_type == 'by_objective':
+        # Existing by_objective logic
+        query = db.session.query(Event)\
+            .join(Session, Event.session_id == Session.id)\
+            .join(Student, Event.student_id == Student.id)\
+            .join(Objective, Event.objective_id == Objective.id)
+        
+        if start_date:
+            query = query.filter(Session.date >= start_date)
+        if end_date:
+            query = query.filter(Session.date <= end_date)
+        if student_id:
+            query = query.filter(Student.id == student_id)
+        
+        report_data = query.with_entities(
+            Session.date.label('date'),
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            Event.count.label('count'),
+            Event.prompt_level.label('prompt_level'),
+            Event.notes.label('notes')
+        ).order_by(Session.date.desc(), Student.first_name, Objective.objective_text).all()
+        headers = ['Date', 'Student', 'Objective', 'Count', 'Prompt Level', 'Notes']
+        rows = [[row.date, row.student, row.objective, row.count, row.prompt_level or '', row.notes or ''] for row in report_data]
+        
+    elif report_type == 'student_progress':
+        # Student progress cards data
+        summary_query = db.session.query(
+            Student.first_name.label('student'),
+            func.coalesce(func.sum(Event.count), 0).label('total_count')
+        ).select_from(Student)\
+         .outerjoin(Objective, Objective.student_id == Student.id)\
+         .outerjoin(Event, Event.objective_id == Objective.id)\
+         .outerjoin(Session, Event.session_id == Session.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        if start_date and end_date:
+            summary_query = summary_query.filter(
+                or_(Session.date.is_(None), 
+                    and_(Session.date >= start_date, Session.date <= end_date))
+            )
+        if student_id:
+            summary_query = summary_query.filter(Student.id == student_id)
+        
+        summary_data = summary_query.group_by(Student.id).all()
+        
+        headers = ['Student', 'Total Attempts', 'Progress Level']
+        rows = []
+        for row in summary_data:
+            progress_level = 'Not Started' if row.total_count == 0 else \
+                           'Beginning' if row.total_count < 5 else \
+                           'Developing' if row.total_count < 15 else \
+                           'Proficient' if row.total_count < 30 else 'Mastered'
+            rows.append([row.student, row.total_count, progress_level])
+        
+    elif report_type == 'daily_summary':
+        # Daily session breakdown
+        daily_query = db.session.query(
+            Session.date,
+            func.sum(Event.count).label('total_attempts'),
+            func.count(Event.id.distinct()).label('goal_instances'),
+            func.count(Student.id.distinct()).label('students_seen')
+        ).select_from(Session)\
+         .join(Event, Event.session_id == Session.id)\
+         .join(Student, Event.student_id == Student.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        if start_date and end_date:
+            daily_query = daily_query.filter(
+                and_(Session.date >= start_date, Session.date <= end_date)
+            )
+        
+        daily_data = daily_query.group_by(Session.date).order_by(Session.date.desc()).all()
+        headers = ['Date', 'Total Attempts', 'Goal Instances', 'Students Seen']
+        rows = [[row.date, row.total_attempts, row.goal_instances, row.students_seen] for row in daily_data]
+        
+    elif report_type == 'goal_tracking':
+        # Goal achievement tracker
+        summary_query = db.session.query(
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            func.coalesce(func.sum(Event.count), 0).label('total_count')
+        ).select_from(Student)\
+         .join(Objective, Objective.student_id == Student.id)\
+         .outerjoin(Event, Event.objective_id == Objective.id)\
+         .outerjoin(Session, Event.session_id == Session.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        if start_date and end_date:
+            summary_query = summary_query.filter(
+                or_(Session.date.is_(None), 
+                    and_(Session.date >= start_date, Session.date <= end_date))
+            )
+        if student_id:
+            summary_query = summary_query.filter(Student.id == student_id)
+        
+        summary_data = summary_query.group_by(Student.id, Objective.id).all()
+        
+        headers = ['Student', 'Objective', 'Total Count', 'Progress Status']
+        rows = []
+        for row in summary_data:
+            progress = 'Not Started' if row.total_count == 0 else \
+                      'Beginning' if row.total_count < 5 else \
+                      'Developing' if row.total_count < 15 else \
+                      'Proficient' if row.total_count < 30 else 'Mastered'
+            rows.append([row.student, row.objective, row.total_count, progress])
+        
+    elif report_type == 'therapist_notes':
+        # Notes view
+        notes_query = db.session.query(
+            Session.date,
+            Student.first_name.label('student'),
+            Event.notes,
+            func.count(Event.id).label('session_activities')
+        ).select_from(Event)\
+         .join(Session, Event.session_id == Session.id)\
+         .join(Student, Event.student_id == Student.id)\
+         .filter(Student.organization_id == organization.id)\
+         .filter(Event.notes.isnot(None))\
+         .filter(Event.notes != '')
+        
+        if start_date and end_date:
+            notes_query = notes_query.filter(
+                and_(Session.date >= start_date, Session.date <= end_date)
+            )
+        
+        notes_data = notes_query.group_by(Session.date, Student.first_name, Event.notes)\
+                               .order_by(Session.date.desc()).all()
+        headers = ['Date', 'Student', 'Notes', 'Session Activities']
+        rows = [[row.date, row.student, row.notes, row.session_activities] for row in notes_data]
+        
+    elif report_type == 'data_grid':
+        # Grid format - students x objectives
+        summary_query = db.session.query(
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            func.coalesce(func.sum(Event.count), 0).label('total_count')
+        ).select_from(Student)\
+         .join(Objective, Objective.student_id == Student.id)\
+         .outerjoin(Event, Event.objective_id == Objective.id)\
+         .outerjoin(Session, Event.session_id == Session.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        if start_date and end_date:
+            summary_query = summary_query.filter(
+                or_(Session.date.is_(None), 
+                    and_(Session.date >= start_date, Session.date <= end_date))
+            )
+        if student_id:
+            summary_query = summary_query.filter(Student.id == student_id)
+        
+        summary_data = summary_query.group_by(Student.id, Objective.id).all()
+        headers = ['Student', 'Objective', 'Count']
+        rows = [[row.student, row.objective, row.total_count] for row in summary_data]
+        
+    elif report_type == 'student_dashboard':
+        # Session details by date
+        dashboard_query = db.session.query(
+            Session.date,
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            Event.count,
+            Event.prompt_level,
+            Event.notes
+        ).select_from(Event)\
+         .join(Session, Event.session_id == Session.id)\
+         .join(Student, Event.student_id == Student.id)\
+         .join(Objective, Event.objective_id == Objective.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        if start_date and end_date:
+            dashboard_query = dashboard_query.filter(
+                and_(Session.date >= start_date, Session.date <= end_date)
+            )
+        if student_id:
+            dashboard_query = dashboard_query.filter(Student.id == student_id)
+        
+        session_details = dashboard_query.order_by(Session.date.desc(), Student.first_name).all()
+        headers = ['Date', 'Student', 'Objective', 'Count', 'Prompt Level', 'Notes']
+        rows = [[row.date, row.student, row.objective, row.count, 
+                row.prompt_level or 'Independent', row.notes or ''] for row in session_details]
+        
+    elif report_type == 'comprehensive_dashboard':
+        if student_id:
+            # Individual student detailed dashboard
+            student_events = db.session.query(
+                Session.date,
+                Objective.objective_text,
+                Event.count,
+                Event.prompt_level,
+                Event.notes
+            ).select_from(Event)\
+             .join(Session, Event.session_id == Session.id)\
+             .join(Objective, Event.objective_id == Objective.id)\
+             .filter(Event.student_id == student_id)
+            
+            if start_date and end_date:
+                student_events = student_events.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            
+            events_data = student_events.order_by(Session.date.desc()).all()
+            headers = ['Date', 'Objective', 'Count', 'Prompt Level', 'Notes']
+            rows = [[row.date, row.objective_text, row.count, 
+                    row.prompt_level or 'Independent', row.notes or ''] for row in events_data]
+        else:
+            # Organization overview
+            all_events = db.session.query(
+                Student.first_name,
+                func.sum(Event.count).label('total_attempts'),
+                func.count(Session.date.distinct()).label('sessions'),
+                func.count(Event.objective_id.distinct()).label('objectives')
+            ).select_from(Event)\
+             .join(Student, Event.student_id == Student.id)\
+             .join(Session, Event.session_id == Session.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            if start_date and end_date:
+                all_events = all_events.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            
+            student_summaries = all_events.group_by(Student.id).all()
+            headers = ['Student', 'Total Attempts', 'Sessions', 'Objectives']
+            rows = [[s.first_name, s.total_attempts, s.sessions, s.objectives] for s in student_summaries]
+    
     else:
+        # Fallback to by_objective for unknown types
+        query = db.session.query(Event)\
+            .join(Session, Event.session_id == Session.id)\
+            .join(Student, Event.student_id == Student.id)\
+            .join(Objective, Event.objective_id == Objective.id)
+        
+        if start_date:
+            query = query.filter(Session.date >= start_date)
+        if end_date:
+            query = query.filter(Session.date <= end_date)
+        if student_id:
+            query = query.filter(Student.id == student_id)
+        
         report_data = query.with_entities(
             Session.date.label('date'),
             Student.first_name.label('student'),
@@ -2510,21 +3035,15 @@ def report_csv():
             Event.notes.label('notes')
         ).order_by(Session.date.desc(), Student.first_name, Objective.objective_text).all()
         headers = ['Date', 'Student', 'Objective', 'Count', 'Notes']
+        rows = [[row.date, row.student, row.objective, row.count, row.notes or ''] for row in report_data]
     
     # Create CSV
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(headers)
     
-    # Create mapping from headers to column names
-    if report_type == 'summary':
-        column_mapping = {'Student': 'student', 'Objective': 'objective', 'Total Count': 'total_count', 'Start Date': 'start_date', 'End Date': 'end_date'}
-    else:
-        column_mapping = {'Date': 'date', 'Student': 'student', 'Objective': 'objective', 'Count': 'count', 'Notes': 'notes'}
-    
-    for row in report_data:
-        writer.writerow([getattr(row, column_mapping[attr], '') if getattr(row, column_mapping[attr], None) is not None else '' 
-                        for attr in headers])
+    for row in rows:
+        writer.writerow(row)
     
     output.seek(0)
     

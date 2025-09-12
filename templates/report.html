@@ -95,10 +95,14 @@
         </h3>
         
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <!-- Export buttons available for ALL report types -->
             {% if report_type in ['by_objective', 'summary'] %}
             <button class="btn btn-secondary btn-small" onclick="copyTableAsTSV()">
                 📋 Copy as TSV
             </button>
+            {% endif %}
+            
+            <!-- CSV and PDF export available for ALL report types -->
             <a href="{{ url_for('report_csv', start_date=start_date, end_date=end_date, student_id=student_id, type=report_type) }}" 
                class="btn btn-secondary btn-small">
                 📄 Download CSV
@@ -107,7 +111,7 @@
                class="btn btn-secondary btn-small">
                 📑 Download PDF
             </a>
-            {% endif %}
+            
             {% if report_type in ['chart', 'pie'] %}
             <button class="btn btn-secondary btn-small" onclick="downloadChart()">
                 💾 Download Chart
