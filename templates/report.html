@@ -279,37 +279,71 @@
     </div>
     
     {% elif report_type == 'student_dashboard' %}
-    <!-- Student Dashboard: Individual session details with totals -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-        {% for student, total in chart_data.student_totals.items() %}
-        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 1rem;">
-            <h4 style="margin: 0 0 0.5rem 0; color: #007bff; display: flex; justify-content: space-between; align-items: center;">
-                <span>👨‍🎓 {{ student }}</span>
-                <small style="color: #666; font-weight: normal;">{{ chart_data.total_sessions.get(student, 0) }} sessions</small>
-            </h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem;">
-                <div style="background: #e3f2fd; padding: 0.5rem; border-radius: 4px; text-align: center;">
-                    <strong style="color: #1976d2; font-size: 1.2rem;">{{ total }}</strong>
-                    <div style="font-size: 0.8rem; color: #666;">Total Trials</div>
+    <!-- Enhanced Student Dashboard: Individual session details with comprehensive totals -->
+    {% if chart_data and chart_data.student_totals %}
+    <div style="margin-bottom: 2rem;">
+        <h4 style="margin: 0 0 1rem 0; color: #333; border-bottom: 2px solid #28a745; padding-bottom: 0.5rem;">
+            📊 Student Performance Summary
+            {% if chart_data.filtered_student %}
+            - {{ chart_data.filtered_student }}
+            {% else %}
+            - All Students
+            {% endif %}
+        </h4>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+            {% for student, total in chart_data.student_totals.items() %}
+            {% set session_count = chart_data.total_sessions.get(student, 0) %}
+            {% set avg_per_session = (total / session_count)|round(1) if session_count > 0 else 0 %}
+            <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border: 1px solid #dee2e6; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h5 style="margin: 0; color: #007bff; font-size: 1.1rem;">👨‍🎓 {{ student }}</h5>
+                    <span style="background: #007bff; color: white; padding: 0.25rem 0.75rem; border-radius: 15px; font-size: 0.8rem;">
+                        {{ session_count }} session{{ 's' if session_count != 1 else '' }}
+                    </span>
                 </div>
-                <div style="background: #e8f5e8; padding: 0.5rem; border-radius: 4px; text-align: center;">
-                    <strong style="color: #388e3c; font-size: 1.2rem;">{{ chart_data.total_sessions.get(student, 0) }}</strong>
-                    <div style="font-size: 0.8rem; color: #666;">Sessions</div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+                    <div style="background: #e3f2fd; padding: 0.75rem; border-radius: 8px; text-align: center;">
+                        <strong style="color: #1976d2; font-size: 1.4rem; display: block;">{{ total }}</strong>
+                        <div style="font-size: 0.75rem; color: #666; margin-top: 0.25rem;">Total Trials</div>
+                    </div>
+                    <div style="background: #e8f5e8; padding: 0.75rem; border-radius: 8px; text-align: center;">
+                        <strong style="color: #388e3c; font-size: 1.4rem; display: block;">{{ session_count }}</strong>
+                        <div style="font-size: 0.75rem; color: #666; margin-top: 0.25rem;">Sessions</div>
+                    </div>
+                    <div style="background: #fff3e0; padding: 0.75rem; border-radius: 8px; text-align: center;">
+                        <strong style="color: #f57c00; font-size: 1.4rem; display: block;">{{ avg_per_session }}</strong>
+                        <div style="font-size: 0.75rem; color: #666; margin-top: 0.25rem;">Avg/Session</div>
+                    </div>
+                </div>
+                
+                <!-- Progress indicator -->
+                <div style="background: #fff; padding: 0.5rem; border-radius: 6px; border-left: 4px solid 
+                    {% if total >= 50 %}#28a745{% elif total >= 20 %}#ffc107{% else %}#17a2b8{% endif %};">
+                    <small style="font-weight: bold; color: 
+                        {% if total >= 50 %}#28a745{% elif total >= 20 %}#ffc107{% else %}#17a2b8{% endif %};">
+                        {% if total >= 50 %}🎯 High Progress{% elif total >= 20 %}📈 Good Progress{% else %}🌱 Getting Started{% endif %}
+                    </small>
                 </div>
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
     </div>
+    {% endif %}
     
     <!-- Session Timeline -->
+    {% if chart_data and chart_data.sessions_by_date %}
     <h4 style="margin: 2rem 0 1rem 0; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">
         📅 Session Timeline 
         {% if chart_data.filtered_student %}
         - {{ chart_data.filtered_student }}
         {% endif %}
+        {% if chart_data.date_range %}
         <small style="color: #666; font-weight: normal; margin-left: 1rem;">
             {{ chart_data.date_range.start }} to {{ chart_data.date_range.end }}
         </small>
+        {% endif %}
     </h4>
     
     <div style="display: flex; flex-direction: column; gap: 1.5rem;">
@@ -348,13 +382,20 @@
                 </div>
             </div>
         </div>
-        {% empty %}
-        <div style="text-align: center; color: #666; padding: 2rem; font-style: italic;">
-            No session data found for the selected date range.
-        </div>
         {% endfor %}
     </div>
+    {% else %}
+    <div style="text-align: center; color: #666; padding: 2rem; font-style: italic;">
+        No session data found for the selected date range.
+    </div>
     {% endif %}
+    {% else %}
+    <div style="text-align: center; color: #666; padding: 2rem; font-style: italic; background: #f8f9fa; border-radius: 8px; margin: 2rem 0;">
+        <h4 style="color: #666;">📊 No Student Dashboard Data Available</h4>
+        <p>No session data found for the selected criteria. Try adjusting the date range or selecting a specific student to see individual session details and performance summaries.</p>
+    </div>
+    {% endif %}
+    
 </div>
 {% else %}
 <div class="card text-center">
