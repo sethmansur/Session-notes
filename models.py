@@ -38,14 +38,14 @@ class User(UserMixin, db.Model):
     
     def is_trial_active(self):
         """Check if user's 7-day trial is still active"""
-        if self.subscription_status != 'trial':
+        if self.subscription_status != 'trial' or not self.trial_start_date:
             return False
         trial_end = self.trial_start_date + timedelta(days=7)
         return datetime.now() < trial_end
     
     def days_left_in_trial(self):
         """Calculate days remaining in trial"""
-        if self.subscription_status != 'trial':
+        if self.subscription_status != 'trial' or not self.trial_start_date:
             return 0
         trial_end = self.trial_start_date + timedelta(days=7)
         remaining = trial_end - datetime.now()
