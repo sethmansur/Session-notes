@@ -138,6 +138,32 @@ def require_subscription(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def admin_required(f):
+    """Decorator to require admin access"""
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Bypass authentication if AUTH_DISABLED=1
+        if os.environ.get('AUTH_DISABLED') == '1':
+            return f(*args, **kwargs)
+        
+        # First require login
+        if not current_user.is_authenticated:
+            return redirect('/auth/replit_auth')
+        
+        # Check if user has active subscription
+        if not current_user.has_active_subscription():
+            return redirect(url_for('upgrade'))
+            
+        # Check if user is admin
+        if not getattr(current_user, 'is_admin', False):
+            from flask import abort
+            abort(403)  # Forbidden access
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
 def get_or_create_session(date_str):
     """Get or create a session for the given date."""
     from datetime import datetime
@@ -247,7 +273,7 @@ def upgrade():
 
 # Admin Dashboard Routes (PROTECTED)
 @app.route('/admin')
-@require_subscription
+@admin_required
 def admin_dashboard():
     """Internal user management dashboard for backend subscription management"""
     from sqlalchemy import func
@@ -277,7 +303,7 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', stats=stats)
 
 @app.route('/admin/users')
-@require_subscription
+@admin_required
 def admin_users():
     """User list with search and filtering"""
     search = request.args.get('search', '')
@@ -314,7 +340,7 @@ def admin_users():
                          plan_filter=plan_filter)
 
 @app.route('/admin/users/<user_id>')
-@require_subscription
+@admin_required
 def admin_user_detail(user_id):
     """Individual user management page"""
     user = User.query.get_or_404(user_id)
@@ -338,7 +364,7 @@ def admin_user_detail(user_id):
     return render_template('admin_user_detail.html', user=user, activity_stats=activity_stats)
 
 @app.route('/admin/users/<user_id>/update', methods=['POST'])
-@require_subscription
+@admin_required
 def admin_update_user(user_id):
     """Update user subscription status and plan"""
     user = User.query.get_or_404(user_id)
@@ -2437,6 +2463,7 @@ def print_data_collection_sheet():
         return f"Error generating print sheet: {str(e)}", 500
 
 @app.route('/app/admin/import_spreadsheet', methods=['GET', 'POST'])
+@admin_required
 def import_spreadsheet():
     """Import data from uploaded Excel spreadsheet."""
     if request.method == 'GET':

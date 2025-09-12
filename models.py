@@ -27,6 +27,9 @@ class User(UserMixin, db.Model):
     stripe_subscription_id = db.Column(db.String)
     plan_type = db.Column(db.String(20), default='freemium')  # 'freemium', 'individual', 'team'
     
+    # Admin access control
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
