@@ -205,8 +205,8 @@ def create_checkout_session():
                 'quantity': 1,
             }],
             'mode': 'subscription',
-            'success_url': f'https://{YOUR_DOMAIN}/app?success=true',
-            'cancel_url': f'https://{YOUR_DOMAIN}/upgrade?canceled=true',
+            'success_url': f'https://{request.host}/app?success=true',
+            'cancel_url': f'https://{request.host}/upgrade?canceled=true',
             'automatic_tax': {'enabled': False},
             'metadata': {
                 'user_id': current_user.id,
