@@ -24,14 +24,27 @@ else:
     # Development environment
     app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
 
+# Configure server name for OAuth redirects to work properly
+if os.environ.get('REPLIT_DEV_DOMAIN'):
+    app.config['SERVER_NAME'] = os.environ['REPLIT_DEV_DOMAIN']
+elif os.environ.get('REPLIT_DOMAINS'):
+    app.config['SERVER_NAME'] = os.environ['REPLIT_DOMAINS'].split(',')[0]
+
 # Configure file upload limits (10MB max)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+
+# Configure for HTTPS on Replit
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+
+# Force Flask-Dance to use HTTPS for OAuth redirects
+import os
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # Stripe configuration
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
 YOUR_DOMAIN = os.environ.get('REPLIT_DEV_DOMAIN') if os.environ.get('REPLIT_DEPLOYMENT') != '1' else os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else 'localhost:5000'
 
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
 
 # Handle file upload size limit errors
 @app.errorhandler(413)
