@@ -870,6 +870,28 @@ def get_selections():
         'notes': notes
     })
 
+@app.route('/app/reset_session', methods=['POST'])
+def reset_session():
+    """Reset all counts for the current session date."""
+    try:
+        data = request.get_json()
+        session_date = data.get('date')
+        
+        if not session_date:
+            return jsonify({'error': 'Date is required'}), 400
+        
+        # Get or create session for the date
+        session = Session.query.filter_by(date=session_date).first()
+        if session:
+            # Delete all events for this session
+            Event.query.filter_by(session_id=session.id).delete()
+            db.session.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/app/report')
 def report():
     """Show reports page with filtering."""
@@ -1092,6 +1114,113 @@ def report():
                 'type': 'pie',
                 'labels': list(objective_totals.keys()),
                 'data': list(objective_totals.values())
+            }
+        
+        elif report_type == 'student_progress':
+            # Student progress cards showing individual achievements
+            chart_data = {'type': 'cards', 'students': []}
+            for student in students:
+                student_data = [row for row in summary_data if row.student == student.first_name]
+                total_attempts = sum(row.total_count for row in student_data)
+                active_goals = len([row for row in student_data if row.total_count > 0])
+                chart_data['students'].append({
+                    'name': student.first_name,
+                    'total_attempts': total_attempts,
+                    'active_goals': active_goals,
+                    'total_goals': len(student_data)
+                })
+                
+        elif report_type == 'daily_summary':
+            # Daily breakdown showing session productivity
+            daily_query = db.session.query(
+                Session.date,
+                func.sum(Event.count).label('total_attempts'),
+                func.count(Event.id.distinct()).label('goal_instances'),
+                func.count(Student.id.distinct()).label('students_seen')
+            ).select_from(Session)\
+             .join(Event, Event.session_id == Session.id)\
+             .join(Student, Event.student_id == Student.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            if start_date and end_date:
+                daily_query = daily_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            
+            daily_data = daily_query.group_by(Session.date).order_by(Session.date.desc()).all()
+            chart_data = {
+                'type': 'daily',
+                'sessions': [{
+                    'date': row.date.isoformat(),
+                    'total_attempts': row.total_attempts,
+                    'goal_instances': row.goal_instances,
+                    'students_seen': row.students_seen
+                } for row in daily_data]
+            }
+            
+        elif report_type == 'goal_tracking':
+            # Goal achievement tracker with progress indicators
+            goal_data = []
+            for row in summary_data:
+                # Calculate progress based on count thresholds
+                progress = 'Not Started' if row.total_count == 0 else \
+                          'Beginning' if row.total_count < 5 else \
+                          'Developing' if row.total_count < 15 else \
+                          'Proficient' if row.total_count < 30 else 'Mastered'
+                goal_data.append({
+                    'student': row.student,
+                    'objective': row.objective,
+                    'count': row.total_count,
+                    'progress': progress
+                })
+            chart_data = {'type': 'goals', 'goals': goal_data}
+            
+        elif report_type == 'therapist_notes':
+            # Notes view for documentation and observations
+            notes_query = db.session.query(
+                Session.date,
+                Student.first_name.label('student'),
+                Event.notes,
+                func.count(Event.id).label('session_activities')
+            ).select_from(Event)\
+             .join(Session, Event.session_id == Session.id)\
+             .join(Student, Event.student_id == Student.id)\
+             .filter(Student.organization_id == organization.id)\
+             .filter(Event.notes.isnot(None))\
+             .filter(Event.notes != '')
+            
+            if start_date and end_date:
+                notes_query = notes_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            
+            notes_data = notes_query.group_by(Session.date, Student.first_name, Event.notes)\
+                                   .order_by(Session.date.desc()).all()
+            chart_data = {
+                'type': 'notes',
+                'entries': [{
+                    'date': row.date.isoformat(),
+                    'student': row.student,
+                    'notes': row.notes,
+                    'activities': row.session_activities
+                } for row in notes_data]
+            }
+            
+        elif report_type == 'data_grid':
+            # Quick data grid showing all students and objectives
+            grid_data = {}
+            for row in summary_data:
+                if row.student not in grid_data:
+                    grid_data[row.student] = {}
+                # Truncate objective for grid display
+                short_obj = row.objective[:20] + '...' if len(row.objective) > 20 else row.objective
+                grid_data[row.student][short_obj] = row.total_count
+            
+            chart_data = {
+                'type': 'grid',
+                'students': list(grid_data.keys()),
+                'objectives': list(set(obj for student_data in grid_data.values() for obj in student_data.keys())),
+                'data': grid_data
             }
     
     return render_template('report.html', 

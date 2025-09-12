@@ -155,6 +155,11 @@
     <div style="display: flex; align-items: center; gap: 1rem;">
         <input type="date" id="session-date" value="{{ today }}" 
                style="padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px;">
+        <button class="btn btn-secondary" onclick="resetSession()" 
+                style="padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem;"
+                title="Clear all counts for new session">
+            🔄 Reset Session
+        </button>
         <button id="print-sheet-btn" class="btn btn-secondary" onclick="generatePrintSheet()" 
                 style="padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem;"
                 disabled title="Select students to enable print sheet">
@@ -409,6 +414,39 @@
             // Revert on error
             countElement.textContent = currentCount;
             showMessage('Failed to decrement count', 'error');
+        }
+    }
+    
+    // Reset session - clear all counts
+    async function resetSession() {
+        if (!confirm('Are you sure you want to reset all counts for a new session? This will clear all current data.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/app/reset_session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    date: sessionDate
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Reset all count displays to 0
+                document.querySelectorAll('[id^="count-"]').forEach(countElement => {
+                    countElement.textContent = '0';
+                });
+                showMessage('Session reset successfully!', 'success');
+            } else {
+                showMessage(result.error || 'Failed to reset session', 'error');
+            }
+        } catch (error) {
+            showMessage('Failed to reset session', 'error');
         }
     }
     

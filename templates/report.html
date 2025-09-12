@@ -46,6 +46,21 @@
                 <option value="pie" {% if report_type == 'pie' %}selected{% endif %}>
                     🥧 Objective Distribution
                 </option>
+                <option value="student_progress" {% if report_type == 'student_progress' %}selected{% endif %}>
+                    👨‍🎓 Student Progress Cards
+                </option>
+                <option value="daily_summary" {% if report_type == 'daily_summary' %}selected{% endif %}>
+                    📅 Daily Session Summary
+                </option>
+                <option value="goal_tracking" {% if report_type == 'goal_tracking' %}selected{% endif %}>
+                    🎯 Goal Achievement Tracker
+                </option>
+                <option value="therapist_notes" {% if report_type == 'therapist_notes' %}selected{% endif %}>
+                    📝 Therapist Notes View
+                </option>
+                <option value="data_grid" {% if report_type == 'data_grid' %}selected{% endif %}>
+                    🔢 Quick Data Grid
+                </option>
             </select>
         </div>
         
@@ -131,6 +146,124 @@
         <div style="width: 400px; height: 400px;">
             <canvas id="pieChart"></canvas>
         </div>
+    </div>
+    
+    {% elif report_type == 'student_progress' %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+        {% for student in chart_data.students %}
+        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 1rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #007bff;">{{ student.name }}</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem;">
+                <div><strong>Total Attempts:</strong> {{ student.total_attempts }}</div>
+                <div><strong>Active Goals:</strong> {{ student.active_goals }}/{{ student.total_goals }}</div>
+                <div style="grid-column: span 2;">
+                    <div style="background: #e9ecef; border-radius: 4px; height: 8px; margin-top: 0.5rem;">
+                        <div style="background: #007bff; height: 8px; border-radius: 4px; width: {{ (student.active_goals / student.total_goals * 100) if student.total_goals > 0 else 0 }}%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    {% elif report_type == 'daily_summary' %}
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; background: white;">
+            <thead>
+                <tr style="background: #f8f9fa;">
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Date</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Total Attempts</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Goal Instances</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Students Seen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in chart_data.sessions %}
+                <tr>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{{ session.date }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #007bff;">{{ session.total_attempts }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ session.goal_instances }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ session.students_seen }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% elif report_type == 'goal_tracking' %}
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; background: white;">
+            <thead>
+                <tr style="background: #f8f9fa;">
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Student</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Objective</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Count</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Progress Level</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for goal in chart_data.goals %}
+                <tr>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{{ goal.student }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{{ goal.objective }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{{ goal.count }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
+                        {% if goal.progress == 'Not Started' %}
+                            <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">{{ goal.progress }}</span>
+                        {% elif goal.progress == 'Beginning' %}
+                            <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">{{ goal.progress }}</span>
+                        {% elif goal.progress == 'Developing' %}
+                            <span style="background: #ffc107; color: black; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">{{ goal.progress }}</span>
+                        {% elif goal.progress == 'Proficient' %}
+                            <span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">{{ goal.progress }}</span>
+                        {% else %}
+                            <span style="background: #28a745; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">{{ goal.progress }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% elif report_type == 'therapist_notes' %}
+    <div style="display: flex; flex-direction: column; gap: 1rem;">
+        {% for entry in chart_data.entries %}
+        <div style="background: #f8f9fa; border-left: 4px solid #007bff; padding: 1rem; border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <strong style="color: #007bff;">{{ entry.student }}</strong>
+                <small style="color: #666;">{{ entry.date }} • {{ entry.activities }} activities</small>
+            </div>
+            <p style="margin: 0; font-style: italic; color: #555;">{{ entry.notes }}</p>
+        </div>
+        {% endfor %}
+    </div>
+    
+    {% elif report_type == 'data_grid' %}
+    <div style="overflow-x: auto; font-size: 0.8rem;">
+        <table style="width: 100%; border-collapse: collapse; background: white;">
+            <thead>
+                <tr style="background: #f8f9fa;">
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left; position: sticky; left: 0; background: #f8f9fa;">Student</th>
+                    {% for objective in chart_data.objectives %}
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: center; min-width: 80px; writing-mode: vertical-rl; text-orientation: mixed;">{{ objective }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in chart_data.students %}
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; position: sticky; left: 0; background: white;">{{ student }}</td>
+                    {% for objective in chart_data.objectives %}
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center; 
+                        {% if chart_data.data[student].get(objective, 0) > 0 %}background: #d4edda; color: #155724;{% else %}background: #f8d7da; color: #721c24;{% endif %}">
+                        {{ chart_data.data[student].get(objective, 0) }}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
     {% endif %}
 </div>
