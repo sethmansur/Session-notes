@@ -448,13 +448,19 @@
             return;
         }
         
+        // Use proper URL construction to avoid encoding issues
         const studentIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.studentId).join(',');
         const printDate = document.getElementById('print-date').value || new Date().toISOString().split('T')[0];
         
-        const printUrl = `/app/print/sheet?student_ids=${studentIds}&date=${printDate}&boxes=10&auto_print=true`;
+        const url = new URL('/app/print/sheet', window.location.origin);
+        url.searchParams.set('student_ids', studentIds);
+        url.searchParams.set('date', printDate);
+        url.searchParams.set('boxes', '10');
+        url.searchParams.set('auto_print', 'true');
+        url.searchParams.set('v', Date.now().toString()); // Cache buster
         
         // Open in new window/tab for printing
-        window.open(printUrl, '_blank', 'width=800,height=600');
+        window.open(url.toString(), '_blank', 'width=800,height=600');
         
         showMessage(`Opening print sheet for ${selectedCheckboxes.length} student${selectedCheckboxes.length > 1 ? 's' : ''}`, 'success');
     }

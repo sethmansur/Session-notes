@@ -8,7 +8,7 @@
         /* Print-optimized CSS */
         @page {
             size: letter portrait;
-            margin: 0.25in;
+            margin: 0;
         }
 
         @media print {
@@ -31,11 +31,17 @@
         }
 
         .page {
-            width: 8in; /* 8.5" - 0.5" margins (0.25" each side) */
-            height: 10.5in; /* 11" - 0.5" margins (0.25" each side) */
+            width: 8.5in;
+            min-height: 11in;
+            padding: 0.25in;
+            box-sizing: border-box;
             display: grid;
             grid-template-rows: auto 1fr; /* Header + students grid */
-            page-break-inside: avoid;
+            page-break-after: always;
+        }
+        
+        .page:last-child {
+            page-break-after: auto;
         }
 
         /* Header Section - Compact */

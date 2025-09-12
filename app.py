@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
 from datetime import datetime, date
-from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file, session
+from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file, session, make_response
 from flask_login import current_user
 import csv
 import io
@@ -1057,7 +1057,10 @@ def direct_print_data_collection_sheet():
             'page_subtitle': request.args.get('page_subtitle', f'{total_students} Students')
         }
         
-        return render_template('print_sheet.html', **template_data)
+        response = make_response(render_template('print_sheet.html', **template_data))
+        response.headers['Cache-Control'] = 'no-store, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        return response
         
     except Exception as e:
         logging.error(f"Error generating direct print sheet: {e}")
@@ -2347,7 +2350,10 @@ def print_data_collection_sheet():
             'page_subtitle': request.args.get('page_subtitle', f'{total_students} Students')
         }
         
-        return render_template('print_sheet.html', **template_data)
+        response = make_response(render_template('print_sheet.html', **template_data))
+        response.headers['Cache-Control'] = 'no-store, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        return response
         
     except Exception as e:
         logging.error(f"Error generating print sheet: {e}")

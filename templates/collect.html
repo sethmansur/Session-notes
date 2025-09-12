@@ -338,12 +338,18 @@
             return;
         }
         
+        // Use proper URL construction to avoid encoding issues
         const studentIds = selectedStudents.map(s => s.id).join(',');
         const printRoute = isDirectAccess ? '/direct/print/sheet' : '/app/print/sheet';
-        const printUrl = `${printRoute}?student_ids=${studentIds}&date=${sessionDate}&boxes=10&auto_print=true`;
+        const url = new URL(printRoute, window.location.origin);
+        url.searchParams.set('student_ids', studentIds);
+        url.searchParams.set('date', sessionDate);
+        url.searchParams.set('boxes', '10');
+        url.searchParams.set('auto_print', 'true');
+        url.searchParams.set('v', Date.now().toString()); // Cache buster
         
         // Open in new window/tab for printing
-        window.open(printUrl, '_blank', 'width=800,height=600');
+        window.open(url.toString(), '_blank', 'width=800,height=600');
     }
     
     async function loadExistingCounts() {
