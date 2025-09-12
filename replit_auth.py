@@ -230,30 +230,55 @@ def verify_jwt_token(token, audience=None):
         raise ValueError(f"Token validation failed: {str(e)}")
 
 def save_user(user_claims):
-    user = User()
-    user.id = user_claims['sub']
-    user.email = user_claims.get('email')
-    user.first_name = user_claims.get('first_name')
-    user.last_name = user_claims.get('last_name')
-    user.profile_image_url = user_claims.get('profile_image_url')
-    merged_user = db.session.merge(user)
+    user_id = user_claims['sub']
+    user = User.query.get(user_id)
+    
+    if not user:
+        # Create new user
+        user = User(
+            id=user_id,
+            email=user_claims.get('email'),
+            first_name=user_claims.get('first_name'),
+            last_name=user_claims.get('last_name'),
+            profile_image_url=user_claims.get('profile_image_url')
+        )
+        db.session.add(user)
+    else:
+        # Update existing user
+        user.email = user_claims.get('email')
+        user.first_name = user_claims.get('first_name')  
+        user.last_name = user_claims.get('last_name')
+        user.profile_image_url = user_claims.get('profile_image_url')
+    
     db.session.commit()
-    return merged_user
+    return user
 
 @oauth_authorized.connect
 def logged_in(blueprint, token):
     try:
+        print(f"OAuth callback received token: {type(token)}")
         # Properly verify JWT signature against Replit's JWKS
         user_claims = verify_jwt_token(token['id_token'])
+        print(f"JWT verification successful for user: {user_claims.get('sub')}")
         user = save_user(user_claims)
+        print(f"User saved successfully: {user.id}")
         login_user(user)
+        print(f"User logged in successfully")
         blueprint.token = token
         next_url = session.pop("next_url", None)
         if next_url is not None:
+            print(f"Redirecting to next_url: {next_url}")
             return redirect(next_url)
+        print("OAuth login complete, redirecting to dashboard")
+        return redirect('/app')
     except ValueError as e:
         # Log the error and redirect to error page
         print(f"JWT verification failed: {str(e)}")
+        return redirect(url_for('replit_auth.error'))
+    except Exception as e:
+        print(f"Unexpected error in OAuth callback: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return redirect(url_for('replit_auth.error'))
 
 @oauth_error.connect
