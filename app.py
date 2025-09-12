@@ -684,6 +684,60 @@ def decrement_event():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
+@app.route('/app/event/update', methods=['POST'])
+def update_event():
+    """Update count and prompt level for an objective on a date."""
+    data = request.get_json()
+    date_str = data.get('date')
+    student_id = data.get('student_id')
+    objective_id = data.get('objective_id')
+    count = int(data.get('count', 0))
+    prompt_level = data.get('prompt_level', '')
+    activity = data.get('activity', '')
+    
+    if not all([date_str, student_id, objective_id]):
+        return jsonify({'error': 'Missing required parameters'}), 400
+    
+    if count < 0:
+        return jsonify({'error': 'Count cannot be negative'}), 400
+    
+    session_id = get_or_create_session(date_str)
+    
+    try:
+        # Check if event exists
+        event = Event.query.filter_by(
+            session_id=session_id, 
+            student_id=student_id, 
+            objective_id=objective_id
+        ).first()
+        
+        if count == 0:
+            # Delete event if count is 0
+            if event:
+                db.session.delete(event)
+        else:
+            # Create or update event
+            if event:
+                event.count = count
+                event.prompt_level = prompt_level if prompt_level else event.prompt_level
+                event.activity = activity if activity else event.activity
+            else:
+                event = Event(
+                    session_id=session_id,
+                    student_id=student_id,
+                    objective_id=objective_id,
+                    count=count,
+                    prompt_level=prompt_level if prompt_level else None,
+                    activity=activity if activity else None
+                )
+                db.session.add(event)
+        
+        db.session.commit()
+        return jsonify({'success': True, 'count': count})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/app/event/save_notes', methods=['POST'])
 @require_subscription
 def save_notes():
@@ -733,14 +787,17 @@ def get_counts():
     
     # Format response
     counts = {}
+    prompt_levels = {}
     notes = {}
     for event in events:
         key = f"{event.student_id}-{event.objective_id}"
         counts[key] = event.count
+        if event.prompt_level:
+            prompt_levels[key] = event.prompt_level
         if event.notes:
             notes[str(event.student_id)] = event.notes
     
-    return jsonify({'counts': counts, 'notes': notes})
+    return jsonify({'counts': counts, 'prompt_levels': prompt_levels, 'notes': notes})
 
 @app.route('/app/event/toggle_item_selection', methods=['POST'])
 @require_subscription
