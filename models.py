@@ -2,23 +2,33 @@
 # Using PostgreSQL and SQLAlchemy for multi-tenant architecture
 
 from datetime import datetime, timedelta
+import secrets
 from flask_sqlalchemy import SQLAlchemy
-from flask_dance.consumer.storage.sqla import OAuthConsumerMixin
 from flask_login import UserMixin
+from flask_bcrypt import generate_password_hash, check_password_hash
 from sqlalchemy import UniqueConstraint
 
 db = SQLAlchemy()
 
-# Authentication models (required for Replit Auth)
+# Authentication models for email/password auth
 class User(UserMixin, db.Model):
     """User model for authentication"""
     __tablename__ = 'users'
     
-    id = db.Column(db.String, primary_key=True)  # Replit user ID
-    email = db.Column(db.String, unique=True, nullable=True)
-    first_name = db.Column(db.String, nullable=True)
-    last_name = db.Column(db.String, nullable=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    first_name = db.Column(db.String(80), nullable=True)
+    last_name = db.Column(db.String(80), nullable=True)
     profile_image_url = db.Column(db.String, nullable=True)
+    
+    # Email verification
+    email_verified = db.Column(db.Boolean, default=False, nullable=False)
+    email_verification_token = db.Column(db.String(100), unique=True, nullable=True)
+    
+    # Password reset
+    password_reset_token = db.Column(db.String(100), unique=True, nullable=True)
+    password_reset_expires = db.Column(db.DateTime, nullable=True)
     
     # Trial and subscription tracking
     trial_start_date = db.Column(db.DateTime, default=datetime.now)
@@ -90,19 +100,61 @@ class User(UserMixin, db.Model):
         # Import here to avoid circular import issues
         current_count = Objective.query.filter_by(student_id=student_id).count()
         return current_count < self.get_objectives_per_student_limit()
+    
+    # Password authentication methods
+    def set_password(self, password):
+        """Hash and set password"""
+        self.password_hash = generate_password_hash(password).decode('utf-8')
+    
+    def check_password(self, password):
+        """Check if provided password matches the hash"""
+        return check_password_hash(self.password_hash, password)
+    
+    def generate_email_verification_token(self):
+        """Generate a secure token for email verification"""
+        self.email_verification_token = secrets.token_urlsafe(32)
+        return self.email_verification_token
+    
+    def verify_email_token(self, token):
+        """Verify email verification token"""
+        if self.email_verification_token == token:
+            self.email_verified = True
+            self.email_verification_token = None
+            return True
+        return False
+    
+    def generate_password_reset_token(self):
+        """Generate a secure token for password reset"""
+        self.password_reset_token = secrets.token_urlsafe(32)
+        self.password_reset_expires = datetime.now() + timedelta(hours=1)
+        return self.password_reset_token
+    
+    def verify_password_reset_token(self, token):
+        """Verify password reset token and check expiration"""
+        if (self.password_reset_token == token and 
+            self.password_reset_expires and 
+            datetime.now() < self.password_reset_expires):
+            return True
+        return False
+    
+    def reset_password(self, password):
+        """Reset password and clear reset token"""
+        self.set_password(password)
+        self.password_reset_token = None
+        self.password_reset_expires = None
+    
+    @property
+    def full_name(self):
+        """Get user's full name"""
+        if self.first_name and self.last_name:
+            return f"{self.first_name} {self.last_name}"
+        elif self.first_name:
+            return self.first_name
+        elif self.last_name:
+            return self.last_name
+        else:
+            return self.email
 
-class OAuth(OAuthConsumerMixin, db.Model):
-    """OAuth token storage (required for Replit Auth)"""
-    user_id = db.Column(db.String, db.ForeignKey('users.id'))
-    browser_session_key = db.Column(db.String, nullable=False)
-    user = db.relationship('User')
-
-    __table_args__ = (UniqueConstraint(
-        'user_id',
-        'browser_session_key', 
-        'provider',
-        name='uq_user_browser_session_key_provider',
-    ),)
 
 # Multi-tenant organization models
 class Organization(db.Model):

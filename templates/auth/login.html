@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In — SessionNotes{% endblock %}
+
+{% block content %}
+<style>
+    .auth-container {
+        max-width: 400px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .auth-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .auth-header h1 {
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+        font-size: 1.8rem;
+    }
+    
+    .auth-header p {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #555;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 16px;
+        transition: border-color 0.2s;
+    }
+    
+    .form-control:focus {
+        outline: none;
+        border-color: #3498db;
+    }
+    
+    .form-check {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-check input[type="checkbox"] {
+        width: auto;
+    }
+    
+    .btn-primary {
+        width: 100%;
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .btn-primary:hover {
+        background: #2980b9;
+    }
+    
+    .auth-links {
+        text-align: center;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #eee;
+    }
+    
+    .auth-links a {
+        color: #3498db;
+        text-decoration: none;
+        font-weight: 500;
+    }
+    
+    .auth-links a:hover {
+        text-decoration: underline;
+    }
+    
+    .alert {
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    
+    .alert-error {
+        background: #fee;
+        color: #c53030;
+        border: 1px solid #feb2b2;
+    }
+    
+    .alert-success {
+        background: #f0fff4;
+        color: #276749;
+        border: 1px solid #9ae6b4;
+    }
+    
+    .alert-info {
+        background: #ebf8ff;
+        color: #2c5aa0;
+        border: 1px solid #90cdf4;
+    }
+</style>
+
+<div class="auth-container">
+    <div class="auth-header">
+        <h1>🔐 Sign In</h1>
+        <p>Welcome back! Sign in to access your session data.</p>
+    </div>
+    
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ 'error' if category == 'error' else category }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <form method="POST" action="{{ url_for('auth.login') }}">
+        {{ csrf_token() }}
+        
+        <div class="form-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" name="email" class="form-control" 
+                   value="{{ request.form.email or '' }}" required autofocus>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" class="form-control" required>
+        </div>
+        
+        <div class="form-check">
+            <input type="checkbox" id="remember_me" name="remember_me" value="true">
+            <label for="remember_me">Remember me</label>
+        </div>
+        
+        <button type="submit" class="btn-primary">Sign In</button>
+    </form>
+    
+    <div class="auth-links">
+        <p><a href="{{ url_for('auth.forgot_password') }}">Forgot your password?</a></p>
+        <p>Don't have an account? <a href="{{ url_for('auth.register') }}">Create one here</a></p>
+    </div>
+</div>
+{% endblock %}

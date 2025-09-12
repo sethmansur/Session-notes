@@ -48,11 +48,9 @@ app.config.update(
     REMEMBER_COOKIE_SAMESITE='None'
 )
 
-# Configure OAuth transport security based on environment
-import os
-if os.environ.get("REPLIT_DEPLOYMENT") != "1":
-    # Only enable insecure transport in development environment
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+# Configure Flask-WTF for CSRF protection
+app.config['WTF_CSRF_ENABLED'] = True
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # No time limit for CSRF tokens
 
 # Stripe configuration with error handling
 stripe_secret_key = os.environ.get('STRIPE_SECRET_KEY')
@@ -75,17 +73,12 @@ def file_too_large(error):
 
 # Import database and auth after app creation
 from models import db, User, Organization, Membership, Student, Objective, Session, Event, ObjectiveItem, EventSelection
-from replit_auth import login_manager, make_replit_blueprint
+from auth import init_auth, require_subscription, admin_required
 from flask_login import login_required, current_user
 from functools import wraps
 
-# Initialize login manager
-login_manager.init_app(app)
-
-# Register secure OAuth blueprint
-app.register_blueprint(make_replit_blueprint(), url_prefix="/auth")
-
-# Use secure Flask-Dance OAuth implementation from replit_auth.py
+# Initialize custom authentication system
+login_manager = init_auth(app)
 
 # Custom authentication decorators (removed duplicate - keeping the more complete version below)
 
@@ -116,54 +109,7 @@ with app.app_context():
     logging.info("Database tables created")
 
 # Database tables are managed by SQLAlchemy models in models.py
-
-def require_subscription(f):
-    """Decorator to require active subscription (trial or paid)"""
-    from functools import wraps
-    
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Bypass authentication if AUTH_DISABLED=1
-        if os.environ.get('AUTH_DISABLED') == '1':
-            return f(*args, **kwargs)
-        
-        # First require login
-        if not current_user.is_authenticated:
-            return redirect('/auth/replit_auth')
-        
-        # Check if user has active subscription
-        if not current_user.has_active_subscription():
-            # Trial expired and no active subscription
-            return redirect(url_for('upgrade'))
-        
-        return f(*args, **kwargs)
-    return decorated_function
-
-def admin_required(f):
-    """Decorator to require admin access"""
-    from functools import wraps
-    
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Bypass authentication if AUTH_DISABLED=1
-        if os.environ.get('AUTH_DISABLED') == '1':
-            return f(*args, **kwargs)
-        
-        # First require login
-        if not current_user.is_authenticated:
-            return redirect('/auth/replit_auth')
-        
-        # Check if user has active subscription
-        if not current_user.has_active_subscription():
-            return redirect(url_for('upgrade'))
-            
-        # Check if user is admin
-        if not getattr(current_user, 'is_admin', False):
-            from flask import abort
-            abort(403)  # Forbidden access
-        
-        return f(*args, **kwargs)
-    return decorated_function
+# Authentication decorators are now imported from auth.py module
 
 def get_or_create_session(date_str):
     """Get or create a session for the given date."""
