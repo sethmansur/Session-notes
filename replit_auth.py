@@ -211,6 +211,7 @@ def logged_in(blueprint, token):
 
 @oauth_error.connect
 def handle_error(blueprint, error, error_description=None, error_uri=None):
+    print(f"OAuth error: {error}, description: {error_description}, error_uri: {error_uri}")
     return redirect(url_for('replit_auth.error'))
 
 def require_login(f):

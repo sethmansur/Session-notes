@@ -28,12 +28,8 @@ else:
     # Development environment
     app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
 
-# Configure server name only when absolutely needed for OAuth
-# This allows localhost testing while fixing OAuth redirect URI issues
-if os.environ.get('REPLIT_DEPLOYMENT') == '1':
-    # In production, use the proper domain
-    if os.environ.get('REPLIT_DOMAINS'):
-        app.config['SERVER_NAME'] = os.environ['REPLIT_DOMAINS'].split(',')[0]
+# Remove SERVER_NAME configuration to let Flask use the actual request host
+# This ensures OAuth redirect_uri matches the domain the user is actually on
 
 # Configure file upload limits (10MB max)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
@@ -56,8 +52,8 @@ if not stripe_secret_key:
 else:
     stripe.api_key = stripe_secret_key
 
-# Domain configuration with fallback handling
-YOUR_DOMAIN = os.environ.get('REPLIT_DEV_DOMAIN') if os.environ.get('REPLIT_DEPLOYMENT') != '1' else os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else 'localhost:5000'
+# Domain configuration - use request host for dynamic domain support
+# This will be set dynamically based on actual request
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
 
