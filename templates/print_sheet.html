@@ -8,7 +8,7 @@
         /* Print-optimized CSS */
         @page {
             size: letter portrait;
-            margin: 0.25in;
+            margin: 0.15in;
             page-break-after: always;
         }
 
@@ -45,16 +45,16 @@
 
         /* Header Section - Compact */
         .header {
-            border-bottom: 2px solid #000;
-            padding-bottom: 0.1in;
-            margin-bottom: 0.1in;
+            border-bottom: 1px solid #000;
+            padding-bottom: 0.05in;
+            margin-bottom: 0.05in;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
         .header h1 {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: bold;
         }
 
@@ -65,8 +65,8 @@
 
         .header-fields {
             display: flex;
-            gap: 1in;
-            margin-top: 0.1in;
+            gap: 0.6in;
+            margin-top: 0.05in;
         }
 
         .header-field {
@@ -87,7 +87,7 @@
         .students-grid {
             display: grid;
             grid-template-columns: 1fr;
-            gap: 0.03in;
+            gap: 0.005in;
             height: 100%; /* Use all available space */
         }
         
@@ -109,10 +109,10 @@
 
         /* Individual Student Panel - Constrained for fit */
         .student-panel {
-            border: 2px solid #000;
-            padding: 0.02in;
+            border: 1px solid #000;
+            padding: 0.01in;
             break-inside: avoid;
-            font-size: 8px;
+            font-size: 7px;
             height: 100%;
             display: grid;
             grid-template-rows: auto 1fr auto; /* name, objectives, notes */
@@ -120,19 +120,19 @@
         }
 
         .student-name {
-            font-size: 10px;
+            font-size: 8px;
             font-weight: bold;
             text-align: center;
-            padding: 0.02in;
-            border-bottom: 2px solid #000;
-            margin-bottom: 0.04in;
+            padding: 0.01in;
+            border-bottom: 1px solid #000;
+            margin-bottom: 0.02in;
             background: #f0f0f0;
         }
 
         .objectives-list {
             display: flex;
             flex-direction: column;
-            gap: 0.01in;
+            gap: 0.005in;
             overflow: hidden; /* Prevent overflow beyond panel */
         }
 
@@ -140,17 +140,17 @@
             display: flex;
             align-items: stretch; /* Allow boxes to use full height */
             border-bottom: 1px solid #ddd;
-            padding-bottom: 0.005in;
-            margin-bottom: 0.005in;
-            min-height: 0.3in;
+            padding-bottom: 0.002in;
+            margin-bottom: 0.002in;
+            min-height: 0.25in;
             flex: 1;
         }
 
         .objective-text {
             flex: 1;
-            font-size: 8px;
-            padding-right: 0.05in;
-            line-height: 1.1;
+            font-size: 7px;
+            padding-right: 0.03in;
+            line-height: 1.0;
             word-wrap: break-word;
             max-width: calc(100% - 1.2in); /* Reserve space for larger box */
         }
@@ -159,31 +159,31 @@
         .count-box {
             width: 1.1in;
             height: 100%; /* Use full available row height */
-            min-height: 0.5in;
-            border: 2px solid #000;
+            min-height: 0.4in;
+            border: 1px solid #000;
             display: inline-block;
             background: white;
-            margin-left: 0.05in;
+            margin-left: 0.02in;
             flex-shrink: 0;
         }
 
         /* Notes area - Compact */
         .notes-area {
-            margin-top: 0.02in;
+            margin-top: 0.01in;
             border-top: 1px solid #ccc;
-            padding-top: 0.01in;
+            padding-top: 0.005in;
         }
 
         .notes-label {
-            font-size: 6px;
+            font-size: 5px;
             font-weight: bold;
-            margin-bottom: 0.02in;
+            margin-bottom: 0.01in;
         }
 
         .notes-lines {
             display: flex;
             flex-direction: column;
-            gap: 0.03in;
+            gap: 0.02in;
         }
 
         .notes-line {
