@@ -1028,25 +1028,21 @@ def direct_print_data_collection_sheet():
         if not students:
             return "No students found", 404
             
-        # Distribute students across pages - max 4 per page with even distribution
+        # Single page layout for 4 or fewer students, multiple pages for 5+
         pages = []
         total_students = len(students)
-        max_per_page = 4
         
-        if total_students <= max_per_page:
-            # Single page for 4 or fewer students
+        if total_students <= 4:
+            # Single page for 1-4 students with dynamic sizing
             pages = [students]
         else:
-            # Even distribution across pages
+            # Multiple pages for 5+ students - max 4 per page
+            max_per_page = 4
             num_pages = (total_students + max_per_page - 1) // max_per_page
-            base_per_page = total_students // num_pages
-            extra_students = total_students % num_pages
             
             start_idx = 0
             for page_idx in range(num_pages):
-                # First 'extra_students' pages get one extra student
-                students_this_page = base_per_page + (1 if page_idx < extra_students else 0)
-                end_idx = start_idx + students_this_page
+                end_idx = min(start_idx + max_per_page, total_students)
                 pages.append(students[start_idx:end_idx])
                 start_idx = end_idx
             
@@ -2319,25 +2315,21 @@ def print_data_collection_sheet():
         if not students:
             return "No students found or access denied", 404
             
-        # Distribute students across pages - max 4 per page with even distribution
+        # Single page layout for 4 or fewer students, multiple pages for 5+
         pages = []
         total_students = len(students)
-        max_per_page = 4
         
-        if total_students <= max_per_page:
-            # Single page for 4 or fewer students
+        if total_students <= 4:
+            # Single page for 1-4 students with dynamic sizing
             pages = [students]
         else:
-            # Even distribution across pages
+            # Multiple pages for 5+ students - max 4 per page
+            max_per_page = 4
             num_pages = (total_students + max_per_page - 1) // max_per_page
-            base_per_page = total_students // num_pages
-            extra_students = total_students % num_pages
             
             start_idx = 0
             for page_idx in range(num_pages):
-                # First 'extra_students' pages get one extra student
-                students_this_page = base_per_page + (1 if page_idx < extra_students else 0)
-                end_idx = start_idx + students_this_page
+                end_idx = min(start_idx + max_per_page, total_students)
                 pages.append(students[start_idx:end_idx])
                 start_idx = end_idx
             
