@@ -364,9 +364,8 @@ def health_check():
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
 @app.route('/app/students')
-@require_subscription
 def students():
-    """Show students and objectives management page. Login required to protect client data."""
+    """Show students and objectives management page. No login required."""
     # Get default organization
     organization = Organization.query.first()
     if not organization:
@@ -399,7 +398,6 @@ def students():
     return render_template('students.html', students=students)
 
 @app.route('/app/students/add', methods=['POST'])
-@require_subscription
 def add_student():
     """Add a new student."""
     first_name = request.form.get('first_name', '').strip()
@@ -430,7 +428,6 @@ def add_student():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/students/delete', methods=['POST'])
-@require_subscription
 def delete_student():
     """Delete a student and all their objectives/events."""
     student_id = request.form.get('student_id')
@@ -449,7 +446,6 @@ def delete_student():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objectives/save', methods=['POST'])
-@require_subscription
 def save_objectives():
     """Save objectives for a student."""
     student_id = request.form.get('student_id')
@@ -487,7 +483,6 @@ def save_objectives():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objectives/delete', methods=['POST'])
-@require_subscription
 def delete_objective():
     """Delete a specific objective."""
     objective_id = request.form.get('objective_id')
@@ -506,7 +501,6 @@ def delete_objective():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objective_items/save', methods=['POST'])
-@require_subscription
 def save_objective_items():
     """Save items for a specific objective."""
     objective_id = request.form.get('objective_id')
@@ -546,7 +540,6 @@ def save_objective_items():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/objective_items/get/<int:objective_id>')
-@require_subscription
 def get_objective_items(objective_id):
     """Get items for a specific objective."""
     items = ObjectiveItem.query.filter_by(objective_id=objective_id)\
@@ -557,7 +550,6 @@ def get_objective_items(objective_id):
     return jsonify({'items': items_list})
 
 @app.route('/app/objective_items/delete', methods=['POST'])
-@require_subscription
 def delete_objective_item():
     """Delete a specific objective item."""
     item_id = request.form.get('item_id')
@@ -576,9 +568,8 @@ def delete_objective_item():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/collect')
-@require_subscription
 def collect():
-    """Show data collection page. Login required to protect client data."""
+    """Show data collection page. No login required."""
     # Get default organization
     organization = Organization.query.first()
     if not organization:
@@ -612,7 +603,6 @@ def collect():
     return render_template('collect.html', students=students, today=today)
 
 @app.route('/app/event/increment', methods=['POST'])
-@require_subscription
 def increment_event():
     """Increment count for an objective on a date."""
     data = request.get_json()
@@ -659,7 +649,6 @@ def increment_event():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/event/decrement', methods=['POST'])
-@require_subscription
 def decrement_event():
     """Decrement count for an objective on a date."""
     data = request.get_json()
