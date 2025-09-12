@@ -872,7 +872,6 @@ def get_selections():
     })
 
 @app.route('/app/report')
-@require_subscription
 def report():
     """Show reports page with filtering."""
     start_date = request.args.get('start_date', '')
@@ -941,7 +940,6 @@ def report():
                          report_type=report_type)
 
 @app.route('/app/report.csv')
-@require_subscription
 def report_csv():
     """Export report as CSV."""
     start_date = request.args.get('start_date', '')
@@ -1008,7 +1006,6 @@ def report_csv():
                      download_name=filename)
 
 @app.route('/app/report.tsv')
-@require_subscription
 def report_tsv():
     """Export report as TSV for clipboard."""
     start_date = request.args.get('start_date', '')
