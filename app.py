@@ -1126,12 +1126,8 @@ def print_data_collection_sheet():
         if not students:
             return "No students found or access denied", 404
             
-        # Group students into pages (4 per page, or 6 if compressed)
-        students_per_page = 6 if compress else 4
-        pages = []
-        for i in range(0, len(students), students_per_page):
-            page_students = students[i:i + students_per_page]
-            pages.append(page_students)
+        # Put all students on a single page for compact printing
+        pages = [students]  # Single page with all students
             
         # Prepare template data
         template_data = {

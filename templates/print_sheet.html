@@ -33,12 +33,7 @@
         .page {
             width: 7.5in; /* 8.5" - 1" margins */
             min-height: 10in; /* 11" - 1" margins */
-            page-break-after: always;
-            margin-bottom: 0.5in;
-        }
-
-        .page:last-child {
-            page-break-after: avoid;
+            /* Removed page breaks to fit everything on one page */
         }
 
         /* Header Section */
@@ -81,120 +76,110 @@
             font-size: 11px;
         }
 
-        /* Student Grid */
+        /* Student Grid - Compact layout for all students on one page */
         .students-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            grid-template-rows: 1fr 1fr;
-            gap: 0.2in;
-            height: 8.5in;
+            grid-template-columns: repeat(auto-fit, minmax(2.2in, 1fr));
+            gap: 0.1in;
+            max-height: 8.5in;
         }
 
-        .students-grid.compress {
-            grid-template-columns: 1fr 1fr 1fr;
-            grid-template-rows: 1fr 1fr;
-        }
-
-        /* Individual Student Panel */
+        /* Individual Student Panel - Compact */
         .student-panel {
-            border: 2px solid #000;
-            padding: 0.15in;
+            border: 1px solid #000;
+            padding: 0.08in;
             break-inside: avoid;
+            font-size: 9px;
         }
 
         .student-name {
-            font-size: 14px;
+            font-size: 11px;
             font-weight: bold;
             text-align: center;
-            padding: 0.1in;
+            padding: 0.05in;
             border-bottom: 1px solid #000;
-            margin-bottom: 0.15in;
+            margin-bottom: 0.08in;
             background: #f0f0f0;
         }
 
         .objectives-list {
             display: flex;
             flex-direction: column;
-            gap: 0.1in;
+            gap: 0.05in;
         }
 
         .objective-row {
             display: flex;
             align-items: flex-start;
-            border-bottom: 1px solid #ccc;
-            padding-bottom: 0.05in;
-            margin-bottom: 0.05in;
-            min-height: 0.4in;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 0.02in;
+            margin-bottom: 0.02in;
+            min-height: 0.25in;
         }
 
         .objective-text {
             flex: 1;
-            font-size: 10px;
-            padding-right: 0.1in;
-            line-height: 1.3;
-            max-width: calc(100% - 3.5in); /* Reserve space for boxes */
+            font-size: 8px;
+            padding-right: 0.05in;
+            line-height: 1.2;
+            max-width: calc(100% - 2.5in); /* Reserve space for boxes */
         }
 
         .objective-text.long {
-            font-size: 9px;
+            font-size: 7px;
         }
 
-        /* Tick Boxes - Precise 1-inch sizing */
+        /* Tick Boxes - Compact sizing */
         .tick-boxes {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.05in;
-            min-width: 3.2in;
+            gap: 0.02in;
+            min-width: 2.2in;
         }
 
         .tick-box {
-            width: {{ box_size }}in;
-            height: {{ box_size }}in;
-            border: 2px solid #000;
+            width: 0.25in;
+            height: 0.25in;
+            border: 1px solid #000;
             display: inline-block;
             background: white;
         }
 
-        .tick-box.small {
-            width: 0.85in;
-            height: 0.85in;
-        }
-
         /* Total Column */
         .total-box {
-            width: 0.8in;
-            height: {{ box_size }}in;
-            border: 2px solid #000;
-            margin-left: 0.1in;
+            width: 0.4in;
+            height: 0.25in;
+            border: 1px solid #000;
+            margin-left: 0.05in;
             display: inline-block;
             background: #f9f9f9;
             text-align: center;
-            font-size: 8px;
-            line-height: {{ box_size }}in;
+            font-size: 6px;
+            line-height: 0.25in;
         }
 
-        /* Notes area */
+        /* Notes area - Compact */
         .notes-area {
-            margin-top: 0.1in;
-            border-top: 1px solid #000;
-            padding-top: 0.05in;
+            margin-top: 0.05in;
+            border-top: 1px solid #ccc;
+            padding-top: 0.02in;
         }
 
         .notes-label {
-            font-size: 8px;
+            font-size: 6px;
             font-weight: bold;
-            margin-bottom: 0.05in;
+            margin-bottom: 0.02in;
         }
 
         .notes-lines {
             display: flex;
             flex-direction: column;
-            gap: 0.08in;
+            gap: 0.04in;
         }
 
         .notes-line {
-            border-bottom: 1px solid #ccc;
-            height: 0.15in;
+            border-bottom: 1px solid #ddd;
+            height: 0.08in;
         }
 
         /* Screen-only controls */
@@ -224,14 +209,15 @@
             background: #0056b3;
         }
 
-        /* Responsive adjustments */
-        {% if compress %}
-        .students-grid { grid-template-columns: 1fr 1fr 1fr; }
-        .tick-box { width: 0.75in; height: 0.75in; }
-        .total-box { width: 0.6in; height: 0.75in; line-height: 0.75in; }
-        .student-panel { padding: 0.1in; }
-        .objective-text { font-size: 9px; max-width: calc(100% - 2.8in); }
-        {% endif %}
+        /* All students on one page - ultra compact mode */
+        .students-grid {
+            grid-template-columns: repeat(auto-fit, minmax(2in, 1fr));
+        }
+        
+        /* Limit objectives shown per student for space */
+        .objective-row:nth-child(n+4) {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -241,7 +227,6 @@
         <button class="btn" onclick="window.close()">✖️ Close</button>
     </div>
 
-    {% for page in pages %}
     <div class="page">
         <!-- Header -->
         <div class="header">
@@ -264,40 +249,39 @@
             </div>
             <div class="header-info">
                 <div><strong>{{ organization_name }}</strong></div>
-                <div>Page {{ loop.index }} of {{ pages|length }}</div>
+                <div>All Students - Single Page</div>
             </div>
         </div>
 
         <!-- Students Grid -->
-        <div class="students-grid{% if compress %} compress{% endif %}">
-            {% for student in page %}
+        <div class="students-grid">
+            {% for student in pages[0] %}
             <div class="student-panel">
                 <div class="student-name">{{ student.first_name }}</div>
                 
                 <div class="objectives-list">
-                    {% set max_objectives = 12 if not compress else 8 %}
-                    {% for objective in student.objectives[:max_objectives] %}
+                    {% for objective in student.objectives[:3] %}
                     <div class="objective-row">
-                        <div class="objective-text{% if objective.objective_text|length > 40 %} long{% endif %}" 
+                        <div class="objective-text{% if objective.objective_text|length > 30 %} long{% endif %}" 
                              title="{{ objective.objective_text }}">
-                            {% if objective.objective_text|length > 60 %}
-                                {{ objective.objective_text[:57] }}...
+                            {% if objective.objective_text|length > 40 %}
+                                {{ objective.objective_text[:37] }}...
                             {% else %}
                                 {{ objective.objective_text }}
                             {% endif %}
                         </div>
                         <div class="tick-boxes">
                             {% for i in range(boxes_per_objective) %}
-                            <div class="tick-box{% if compress %} small{% endif %}"></div>
+                            <div class="tick-box"></div>
                             {% endfor %}
-                            <div class="total-box">Total</div>
+                            <div class="total-box">Tot</div>
                         </div>
                     </div>
                     {% endfor %}
                     
-                    {% if student.objectives|length > max_objectives %}
-                    <div style="font-size: 8px; color: #666; font-style: italic; margin-top: 0.05in;">
-                        +{{ student.objectives|length - max_objectives }} more objectives (see digital version)
+                    {% if student.objectives|length > 3 %}
+                    <div style="font-size: 6px; color: #666; font-style: italic; margin-top: 0.02in;">
+                        +{{ student.objectives|length - 3 }} more goals
                     </div>
                     {% endif %}
                 </div>
@@ -307,14 +291,12 @@
                     <div class="notes-label">Notes:</div>
                     <div class="notes-lines">
                         <div class="notes-line"></div>
-                        <div class="notes-line"></div>
                     </div>
                 </div>
             </div>
             {% endfor %}
         </div>
     </div>
-    {% endfor %}
 
     <!-- Auto-print on load (optional) -->
     <script>
