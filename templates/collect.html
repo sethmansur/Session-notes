@@ -358,9 +358,19 @@
                 Object.entries(result.counts).forEach(([key, count]) => {
                     const countElement = document.getElementById(`count-${key}`);
                     if (countElement) {
-                        countElement.textContent = count;
+                        countElement.value = count;
                     }
                 });
+                
+                // Update prompt levels if available
+                if (result.prompt_levels) {
+                    Object.entries(result.prompt_levels).forEach(([key, promptLevel]) => {
+                        const promptElement = document.getElementById(`prompt-${key}`);
+                        if (promptElement && promptLevel) {
+                            promptElement.value = promptLevel;
+                        }
+                    });
+                }
             }
         } catch (error) {
             console.error('Error loading existing counts:', error);
@@ -368,19 +378,67 @@
     }
     async function incrementCount(studentId, objectiveId, btn) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
+        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
         
         // Optimistic update for instant feedback
-        const currentCount = parseInt(countElement.textContent) || 0;
-        countElement.textContent = currentCount + 1;
-        countElement.style.transform = 'scale(1.3)';
-        countElement.style.color = '#28a745';
+        const currentCount = parseInt(countElement.value) || 0;
+        countElement.value = currentCount + 1;
+        countElement.style.transform = 'scale(1.2)';
+        countElement.style.borderColor = '#28a745';
         setTimeout(() => {
             countElement.style.transform = 'scale(1)';
-            countElement.style.color = '#007bff';
+            countElement.style.borderColor = '#e1e5e9';
         }, 200);
         
+        await updateCountOnServer(studentId, objectiveId, currentCount + 1, promptElement.value);
+    }
+    async function decrementCount(studentId, objectiveId, btn) {
+        const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
+        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        const currentCount = parseInt(countElement.value) || 0;
+        
+        if (currentCount <= 0) {
+            return; // Can't go below 0
+        }
+        
+        // Optimistic update for instant feedback
+        countElement.value = currentCount - 1;
+        countElement.style.transform = 'scale(0.8)';
+        countElement.style.borderColor = '#dc3545';
+        setTimeout(() => {
+            countElement.style.transform = 'scale(1)';
+            countElement.style.borderColor = '#e1e5e9';
+        }, 200);
+        
+        await updateCountOnServer(studentId, objectiveId, currentCount - 1, promptElement.value);
+    }
+    
+    // Handle manual count input changes
+    async function updateCountManually(studentId, objectiveId, inputElement) {
+        const newCount = parseInt(inputElement.value) || 0;
+        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        
+        // Ensure non-negative values
+        if (newCount < 0) {
+            inputElement.value = 0;
+            return;
+        }
+        
+        await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value);
+    }
+    
+    // Handle prompt level changes
+    async function updatePromptLevel(studentId, objectiveId, selectElement) {
+        const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
+        const currentCount = parseInt(countElement.value) || 0;
+        
+        await updateCountOnServer(studentId, objectiveId, currentCount, selectElement.value);
+    }
+    
+    // Shared function to update count and prompt level on server
+    async function updateCountOnServer(studentId, objectiveId, count, promptLevel = '') {
         try {
-            const response = await fetch('/app/event/increment', {
+            const response = await fetch('/app/event/update', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -389,71 +447,21 @@
                     date: sessionDate,
                     student_id: studentId,
                     objective_id: objectiveId,
-                    activity: '',
-                    prompt_level: ''
+                    count: count,
+                    prompt_level: promptLevel,
+                    activity: ''
                 })
             });
             
             const result = await response.json();
             
-            if (result.count !== undefined) {
-                // Update with server count (in case of sync issues)
-                countElement.textContent = result.count;
-            } else {
-                // Revert on error
-                countElement.textContent = currentCount;
-                showMessage(result.error || 'Failed to increment count', 'error');
+            if (!result.success) {
+                showMessage(result.error || 'Failed to update data', 'error');
+                // Optionally revert UI changes here
             }
         } catch (error) {
-            // Revert on error
-            countElement.textContent = currentCount;
-            showMessage('Failed to increment count', 'error');
-        }
-    }
-    async function decrementCount(studentId, objectiveId, btn) {
-        const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
-        const currentCount = parseInt(countElement.textContent) || 0;
-        
-        if (currentCount <= 0) {
-            return; // Can't go below 0
-        }
-        
-        // Optimistic update for instant feedback
-        countElement.textContent = currentCount - 1;
-        countElement.style.transform = 'scale(0.8)';
-        countElement.style.color = '#dc3545';
-        setTimeout(() => {
-            countElement.style.transform = 'scale(1)';
-            countElement.style.color = '#007bff';
-        }, 200);
-        
-        try {
-            const response = await fetch('/app/event/decrement', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    date: sessionDate,
-                    student_id: studentId,
-                    objective_id: objectiveId
-                })
-            });
-            
-            const result = await response.json();
-            
-            if (result.count !== undefined) {
-                // Update with server count
-                countElement.textContent = result.count;
-            } else {
-                // Revert on error
-                countElement.textContent = currentCount;
-                showMessage(result.error || 'Failed to decrement count', 'error');
-            }
-        } catch (error) {
-            // Revert on error
-            countElement.textContent = currentCount;
-            showMessage('Failed to decrement count', 'error');
+            showMessage('Failed to update data', 'error');
+            console.error('Update error:', error);
         }
     }
     
@@ -479,7 +487,11 @@
             if (result.success) {
                 // Reset all count displays to 0
                 document.querySelectorAll('[id^="count-"]').forEach(countElement => {
-                    countElement.textContent = '0';
+                    countElement.value = '0';
+                });
+                // Reset all prompt levels
+                document.querySelectorAll('[id^="prompt-"]').forEach(promptElement => {
+                    promptElement.value = '';
                 });
                 showMessage('Session reset successfully!', 'success');
             } else {
