@@ -1085,7 +1085,6 @@ def download_bulk_upload_template():
         return jsonify({'error': 'Failed to download template'}), 500
 
 @app.route('/app/print/sheet')
-@require_subscription
 def print_data_collection_sheet():
     """Generate printable data collection sheet for offline therapy sessions"""
     try:
