@@ -16,3 +16,5 @@ cryptography==41.0.7
 pandas
 reportlab
 weasyprint
+reportlab
+weasyprint

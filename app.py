@@ -3241,7 +3241,7 @@ def import_spreadsheet():
             return jsonify({'error': 'No file uploaded'}), 400
         
         file = request.files['file']
-        if file.filename == '':
+        if not file.filename or file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
         # Validate file type - only .xlsx supported
@@ -3267,7 +3267,7 @@ def import_spreadsheet():
         from werkzeug.utils import secure_filename
         
         # Create secure filename
-        original_name = secure_filename(file.filename)
+        original_name = secure_filename(file.filename or 'uploaded_file.xlsx')
         safe_filename = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{original_name}"
         temp_filepath = os.path.join(temp_dir, safe_filename)
         
