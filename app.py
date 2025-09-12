@@ -182,17 +182,7 @@ def manual_logout():
     logout_url = f"https://replit.com/oidc/session/end?{urlencode(logout_params)}"
     return redirect(logout_url)
 
-# Custom authentication decorators
-def require_subscription(f):
-    """Decorator that requires user to be logged in with active subscription or trial"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated:
-            return redirect('/auth/replit_auth')
-        if not current_user.has_active_subscription():
-            return redirect('/upgrade')
-        return f(*args, **kwargs)
-    return decorated_function
+# Custom authentication decorators (removed duplicate - keeping the more complete version below)
 
 # Make session permanent
 @app.before_request
@@ -344,7 +334,7 @@ def handle_stripe_webhook():
         )
     except ValueError:
         return '', 400
-    except stripe.error.SignatureVerificationError:
+    except stripe.SignatureVerificationError:
         return '', 400
     
     # Handle the event
