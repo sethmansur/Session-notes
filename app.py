@@ -711,7 +711,6 @@ def save_notes():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/event/counts', methods=['GET'])
-@require_subscription
 def get_counts():
     """Get existing counts for a date and students."""
     date_str = request.args.get('date')

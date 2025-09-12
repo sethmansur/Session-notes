@@ -13,7 +13,7 @@
     }
     .students-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        grid-template-columns: 1fr 1fr;
         gap: 1rem;
         max-height: 80vh;
         overflow: visible;
@@ -138,6 +138,11 @@
     @media (max-width: 768px) {
         .students-grid {
             grid-template-columns: 1fr;
+        }
+    }
+    @media (min-width: 769px) and (max-width: 1200px) {
+        .students-grid {
+            grid-template-columns: 1fr 1fr;
         }
     }
 </style>
@@ -300,7 +305,7 @@
                 params.append('student_id', student.id);
             });
             
-            const response = await fetch(`/event/counts?${params.toString()}`);
+            const response = await fetch(`/app/event/counts?${params.toString()}`);
             const result = await response.json();
             
             if (result.counts) {
@@ -330,7 +335,7 @@
         }, 200);
         
         try {
-            const response = await fetch('/event/increment', {
+            const response = await fetch('/app/event/increment', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -378,7 +383,7 @@
         }, 200);
         
         try {
-            const response = await fetch('/event/decrement', {
+            const response = await fetch('/app/event/decrement', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
