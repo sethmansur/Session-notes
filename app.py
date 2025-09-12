@@ -1489,15 +1489,27 @@ def print_data_collection_sheet():
         if not students:
             return "No students found or access denied", 404
             
-        # Distribute students across pages - max 4 per page for optimal note-taking space
+        # Distribute students across pages - max 4 per page with even distribution
         pages = []
-        students_per_page = 4
         total_students = len(students)
+        max_per_page = 4
         
-        # Simple chunking - max 4 students per page
-        for i in range(0, total_students, students_per_page):
-            page_students = students[i:i + students_per_page]
-            pages.append(page_students)
+        if total_students <= max_per_page:
+            # Single page for 4 or fewer students
+            pages = [students]
+        else:
+            # Even distribution across pages
+            num_pages = (total_students + max_per_page - 1) // max_per_page
+            base_per_page = total_students // num_pages
+            extra_students = total_students % num_pages
+            
+            start_idx = 0
+            for page_idx in range(num_pages):
+                # First 'extra_students' pages get one extra student
+                students_this_page = base_per_page + (1 if page_idx < extra_students else 0)
+                end_idx = start_idx + students_this_page
+                pages.append(students[start_idx:end_idx])
+                start_idx = end_idx
             
         # Prepare template data
         template_data = {

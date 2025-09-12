@@ -235,6 +235,11 @@
             .students-grid.four-students {
                 grid-template-rows: repeat(4, 1fr);
             }
+            
+            /* Remove yellow highlighting from editable fields in print */
+            [contenteditable] {
+                background: transparent !important;
+            }
         }
     </style>
 </head>
