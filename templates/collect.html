@@ -194,7 +194,7 @@
 
 <div class="student-select">
     {% for student in students %}
-    <button class="student-select-btn" data-student-id="{{ student.id }}" onclick="toggleStudent({{ student.id }}, '{{ student.first_name }}')">
+    <button class="student-select-btn" data-student-id="{{ student.id }}" data-student-name="{{ student.first_name|escape }}" onclick="toggleStudent({{ student.id }}, this.dataset.studentName)">
         {{ student.first_name }}
     </button>
     {% endfor %}
