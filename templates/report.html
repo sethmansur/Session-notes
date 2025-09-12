@@ -111,7 +111,7 @@
                         <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ row.start_date }}</td>
                         <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ row.end_date }}</td>
                     {% else %}
-                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ row.date }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ row.date if row.date else 'No sessions' }}</td>
                         <td style="padding: 12px; border: 1px solid #ddd;">{{ row.student }}</td>
                         <td style="padding: 12px; border: 1px solid #ddd;">{{ row.objective }}</td>
                         <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{{ row.count }}</td>
@@ -176,19 +176,22 @@
     document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('progressChart').getContext('2d');
         currentChart = new Chart(ctx, {
-            type: 'bar',
+            type: 'line',
             data: {
-                labels: {{ chart_data.students | tojson }},
-                datasets: [{
-                    label: 'Total Successful Attempts',
-                    data: {{ chart_data.totals | tojson }},
-                    backgroundColor: [
-                        '#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1',
-                        '#fd7e14', '#20c997', '#e83e8c', '#6c757d', '#17a2b8'
-                    ],
-                    borderColor: '#333',
-                    borderWidth: 1
-                }]
+                labels: {{ chart_data.dates | tojson }},
+                datasets: [
+                    {% for student, data in chart_data.datasets.items() %}
+                    {
+                        label: '{{ student }}',
+                        data: {{ data | tojson }},
+                        borderColor: ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14', '#20c997', '#e83e8c'][{{ loop.index0 % 8 }}],
+                        backgroundColor: ['#007bff33', '#28a74533', '#ffc10733', '#dc354533', '#6f42c133', '#fd7e1433', '#20c99733', '#e83e8c33'][{{ loop.index0 % 8 }}],
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.1
+                    }{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ]
             },
             options: {
                 responsive: true,
@@ -196,7 +199,7 @@
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Student Progress - Total Successful Attempts',
+                        text: 'Student Progress Over Time - Daily Totals',
                         font: { size: 16, weight: 'bold' }
                     },
                     legend: {
@@ -215,7 +218,7 @@
                     x: {
                         title: {
                             display: true,
-                            text: 'Students'
+                            text: 'Session Dates'
                         }
                     }
                 }

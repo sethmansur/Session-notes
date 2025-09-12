@@ -1029,18 +1029,53 @@ def report():
                                    .order_by(Student.first_name, Objective.objective_text).all()
         
         if report_type == 'chart':
-            # Prepare data for progress chart (students vs total counts)
-            chart_data = {
-                'type': 'bar',
-                'students': [],
-                'totals': []
-            }
-            student_totals = {}
-            for row in summary_data:
-                student_totals[row.student] = student_totals.get(row.student, 0) + row.total_count
+            # Prepare data for line chart (progress over time)
+            # Get session dates and student progress over time
+            sessions_query = db.session.query(
+                Session.date,
+                Student.first_name.label('student'),
+                func.sum(Event.count).label('daily_total')
+            ).select_from(Session)\
+             .join(Event, Event.session_id == Session.id)\
+             .join(Student, Event.student_id == Student.id)\
+             .filter(Student.organization_id == organization.id)
             
-            chart_data['students'] = list(student_totals.keys())
-            chart_data['totals'] = list(student_totals.values())
+            # Apply date and student filters
+            if start_date and end_date:
+                sessions_query = sessions_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            if student_id:
+                sessions_query = sessions_query.filter(Student.id == student_id)
+            
+            session_data = sessions_query.group_by(Session.date, Student.first_name)\
+                                       .order_by(Session.date).all()
+            
+            # Organize data for line chart
+            chart_data = {
+                'type': 'line',
+                'dates': [],
+                'datasets': {}
+            }
+            
+            # Collect all unique dates and students
+            all_dates = sorted(set(row.date.isoformat() for row in session_data))
+            all_students = sorted(set(row.student for row in session_data))
+            
+            chart_data['dates'] = all_dates
+            
+            # Create datasets for each student
+            for student in all_students:
+                student_data = []
+                for date_str in all_dates:
+                    # Find data for this student on this date
+                    daily_total = 0
+                    for row in session_data:
+                        if row.student == student and row.date.isoformat() == date_str:
+                            daily_total = row.daily_total
+                            break
+                    student_data.append(daily_total)
+                chart_data['datasets'][student] = student_data
             
         elif report_type == 'pie':
             # Prepare data for pie chart (objective distribution)
