@@ -1492,8 +1492,10 @@ def print_data_collection_sheet():
         # Distribute students across pages - max 4 per page for optimal note-taking space
         pages = []
         students_per_page = 4
+        total_students = len(students)
         
-        for i in range(0, len(students), students_per_page):
+        # Simple chunking - max 4 students per page
+        for i in range(0, total_students, students_per_page):
             page_students = students[i:i + students_per_page]
             pages.append(page_students)
             
@@ -1507,8 +1509,8 @@ def print_data_collection_sheet():
             'show_items': show_items,
             'therapist_name': '',  # Could be filled from user profile later
             'organization_name': organization.name,
-            'therapy_type': request.args.get('therapy_type', 'Data Collection'),
-            'page_subtitle': request.args.get('page_subtitle', 'All Students')
+            'therapy_type': request.args.get('therapy_type', 'Speech/OT/PT Data Collection'),
+            'page_subtitle': request.args.get('page_subtitle', f'{total_students} Students')
         }
         
         return render_template('print_sheet.html', **template_data)
