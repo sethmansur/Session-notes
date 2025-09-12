@@ -895,40 +895,169 @@ def report():
     if not end_date:
         end_date = date.today().isoformat()
     
-    # Build base query with joins
-    query = db.session.query(Event)\
-        .join(Session, Event.session_id == Session.id)\
-        .join(Student, Event.student_id == Student.id)\
-        .join(Objective, Event.objective_id == Objective.id)
+    # Build base query - get all students and objectives, then LEFT JOIN events
+    from sqlalchemy import func, or_, and_
     
-    # Apply filters
-    if start_date:
-        query = query.filter(Session.date >= start_date)
-    if end_date:
-        query = query.filter(Session.date <= end_date)
+    # Start with all student-objective combinations
+    base_query = db.session.query(Student, Objective)\
+        .filter(Student.organization_id == organization.id)\
+        .filter(Objective.student_id == Student.id)
+    
+    # Apply student filter
     if student_id:
-        query = query.filter(Student.id == student_id)
+        base_query = base_query.filter(Student.id == student_id)
     
     if report_type == 'summary':
-        # Summary report: student, objective, total count, date range
-        from sqlalchemy import func
-        report_data = query.with_entities(
+        # Summary report: show all objectives with counts (including zero)
+        report_data = db.session.query(
             Student.first_name.label('student'),
             Objective.objective_text.label('objective'),
-            func.sum(Event.count).label('total_count'),
+            func.coalesce(func.sum(Event.count), 0).label('total_count'),
             func.min(Session.date).label('start_date'),
             func.max(Session.date).label('end_date')
-        ).group_by(Student.id, Objective.id)\
-         .order_by(Student.first_name, Objective.objective_text).all()
+        ).select_from(Student)\
+         .join(Objective, Objective.student_id == Student.id)\
+         .outerjoin(Event, Event.objective_id == Objective.id)\
+         .outerjoin(Session, Event.session_id == Session.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        # Apply date filters safely using SQLAlchemy ORM filters
+        if start_date and end_date:
+            report_data = report_data.filter(
+                or_(Session.date.is_(None), 
+                    and_(Session.date >= start_date, Session.date <= end_date))
+            )
+        elif start_date:
+            report_data = report_data.filter(
+                or_(Session.date.is_(None), Session.date >= start_date)
+            )
+        elif end_date:
+            report_data = report_data.filter(
+                or_(Session.date.is_(None), Session.date <= end_date)
+            )
+        
+        if student_id:
+            report_data = report_data.filter(Student.id == student_id)
+            
+        report_data = report_data.group_by(Student.id, Objective.id)\
+                                 .order_by(Student.first_name, Objective.objective_text).all()
     else:
-        # By objective report: date, student, objective, count, notes
-        report_data = query.with_entities(
+        # By objective report: show detailed events, but include zero-count objectives
+        event_query = db.session.query(Event)\
+            .join(Session, Event.session_id == Session.id)\
+            .join(Student, Event.student_id == Student.id)\
+            .join(Objective, Event.objective_id == Objective.id)\
+            .filter(Student.organization_id == organization.id)
+        
+        # Apply filters
+        if start_date:
+            event_query = event_query.filter(Session.date >= start_date)
+        if end_date:
+            event_query = event_query.filter(Session.date <= end_date)
+        if student_id:
+            event_query = event_query.filter(Student.id == student_id)
+        
+        # Get events data
+        event_data = event_query.with_entities(
             Session.date.label('date'),
             Student.first_name.label('student'),
             Objective.objective_text.label('objective'),
             Event.count.label('count'),
             Event.notes.label('notes')
         ).order_by(Session.date.desc(), Student.first_name, Objective.objective_text).all()
+        
+        # Get all objectives that don't have events in this period (apply same filters)
+        objectives_query = base_query
+        if student_id:
+            objectives_query = objectives_query.filter(Student.id == student_id)
+        all_objectives = objectives_query.all()
+        event_objective_ids = {(row.student, row.objective) for row in event_data}
+        
+        # Add zero-count entries for objectives without events
+        zero_entries = []
+        for student, objective in all_objectives:
+            key = (student.first_name, objective.objective_text)
+            if key not in event_objective_ids:
+                # Create a mock row for zero count
+                from collections import namedtuple
+                Row = namedtuple('Row', ['date', 'student', 'objective', 'count', 'notes'])
+                zero_entries.append(Row(
+                    date=None,
+                    student=student.first_name,
+                    objective=objective.objective_text,
+                    count=0,
+                    notes=''
+                ))
+        
+        # Combine and sort
+        report_data = list(event_data) + zero_entries
+        report_data.sort(key=lambda x: (x.student, x.objective, x.date or date.min))
+    
+    # For chart types, prepare chart data
+    chart_data = None
+    if report_type in ['chart', 'pie']:
+        # Get summary data for charts
+        summary_query = db.session.query(
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            func.coalesce(func.sum(Event.count), 0).label('total_count')
+        ).select_from(Student)\
+         .join(Objective, Objective.student_id == Student.id)\
+         .outerjoin(Event, Event.objective_id == Objective.id)\
+         .outerjoin(Session, Event.session_id == Session.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        # Apply date filters safely using SQLAlchemy ORM filters
+        if start_date and end_date:
+            summary_query = summary_query.filter(
+                or_(Session.date.is_(None), 
+                    and_(Session.date >= start_date, Session.date <= end_date))
+            )
+        elif start_date:
+            summary_query = summary_query.filter(
+                or_(Session.date.is_(None), Session.date >= start_date)
+            )
+        elif end_date:
+            summary_query = summary_query.filter(
+                or_(Session.date.is_(None), Session.date <= end_date)
+            )
+        
+        if student_id:
+            summary_query = summary_query.filter(Student.id == student_id)
+            
+        summary_data = summary_query.group_by(Student.id, Objective.id)\
+                                   .order_by(Student.first_name, Objective.objective_text).all()
+        
+        if report_type == 'chart':
+            # Prepare data for progress chart (students vs total counts)
+            chart_data = {
+                'type': 'bar',
+                'students': [],
+                'totals': []
+            }
+            student_totals = {}
+            for row in summary_data:
+                student_totals[row.student] = student_totals.get(row.student, 0) + row.total_count
+            
+            chart_data['students'] = list(student_totals.keys())
+            chart_data['totals'] = list(student_totals.values())
+            
+        elif report_type == 'pie':
+            # Prepare data for pie chart (objective distribution)
+            objective_totals = {}
+            for row in summary_data:
+                # Truncate long objective names for display
+                obj_name = row.objective[:30] + '...' if len(row.objective) > 30 else row.objective
+                objective_totals[obj_name] = objective_totals.get(obj_name, 0) + row.total_count
+            
+            # Only show objectives with counts > 0 for pie chart
+            objective_totals = {k: v for k, v in objective_totals.items() if v > 0}
+            
+            chart_data = {
+                'type': 'pie',
+                'labels': list(objective_totals.keys()),
+                'data': list(objective_totals.values())
+            }
     
     return render_template('report.html', 
                          report_data=report_data,
@@ -936,7 +1065,8 @@ def report():
                          start_date=start_date,
                          end_date=end_date,
                          student_id=student_id,
-                         report_type=report_type)
+                         report_type=report_type,
+                         chart_data=chart_data)
 
 @app.route('/app/report.csv')
 def report_csv():
@@ -986,8 +1116,14 @@ def report_csv():
     writer = csv.writer(output)
     writer.writerow(headers)
     
+    # Create mapping from headers to column names
+    if report_type == 'summary':
+        column_mapping = {'Student': 'student', 'Objective': 'objective', 'Total Count': 'total_count', 'Start Date': 'start_date', 'End Date': 'end_date'}
+    else:
+        column_mapping = {'Date': 'date', 'Student': 'student', 'Objective': 'objective', 'Count': 'count', 'Notes': 'notes'}
+    
     for row in report_data:
-        writer.writerow([getattr(row, attr.lower()) if getattr(row, attr.lower()) is not None else '' 
+        writer.writerow([getattr(row, column_mapping[attr], '') if getattr(row, column_mapping[attr], None) is not None else '' 
                         for attr in headers])
     
     output.seek(0)
@@ -1051,8 +1187,14 @@ def report_tsv():
     lines = []
     lines.append('\t'.join(headers))
     
+    # Create mapping from headers to column names  
+    if report_type == 'summary':
+        column_mapping = {'Student': 'student', 'Objective': 'objective', 'Total Count': 'total_count', 'Start Date': 'start_date', 'End Date': 'end_date'}
+    else:
+        column_mapping = {'Date': 'date', 'Student': 'student', 'Objective': 'objective', 'Count': 'count', 'Notes': 'notes'}
+    
     for row in report_data:
-        line = '\t'.join([str(getattr(row, attr.lower())) if getattr(row, attr.lower()) is not None else '' 
+        line = '\t'.join([str(getattr(row, column_mapping[attr], '')) if getattr(row, column_mapping[attr], None) is not None else '' 
                          for attr in headers])
         lines.append(line)
     

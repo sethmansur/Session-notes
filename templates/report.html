@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="card">
     <h3>Reports & Export</h3>
@@ -31,10 +35,16 @@
             <label for="type">Report Type</label>
             <select id="type" name="type">
                 <option value="by_objective" {% if report_type == 'by_objective' %}selected{% endif %}>
-                    By Objective (detailed)
+                    📋 By Objective (detailed)
                 </option>
                 <option value="summary" {% if report_type == 'summary' %}selected{% endif %}>
-                    Summary (totals)
+                    📊 Summary (totals)
+                </option>
+                <option value="chart" {% if report_type == 'chart' %}selected{% endif %}>
+                    📈 Progress Chart
+                </option>
+                <option value="pie" {% if report_type == 'pie' %}selected{% endif %}>
+                    🥧 Objective Distribution
                 </option>
             </select>
         </div>
@@ -45,25 +55,33 @@
     </form>
 </div>
 
-{% if report_data %}
+{% if report_data or chart_data %}
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <h3 style="margin: 0;">
-            {% if report_type == 'summary' %}Summary Report{% else %}Detailed Report{% endif %}
-            ({{ report_data|length }} records)
+            {% if report_type == 'summary' %}Summary Report{% elif report_type == 'chart' %}Progress Chart{% elif report_type == 'pie' %}Objective Distribution{% else %}Detailed Report{% endif %}
+            {% if report_data %}({{ report_data|length }} records){% endif %}
         </h3>
         
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            {% if report_type in ['by_objective', 'summary'] %}
             <button class="btn btn-secondary btn-small" onclick="copyTableAsTSV()">
-                Copy as TSV
+                📋 Copy as TSV
             </button>
             <a href="{{ url_for('report_csv', start_date=start_date, end_date=end_date, student_id=student_id, type=report_type) }}" 
                class="btn btn-secondary btn-small">
-                Download CSV
+                📄 Download CSV
             </a>
+            {% endif %}
+            {% if report_type in ['chart', 'pie'] %}
+            <button class="btn btn-secondary btn-small" onclick="downloadChart()">
+                💾 Download Chart
+            </button>
+            {% endif %}
         </div>
     </div>
     
+    {% if report_type in ['by_objective', 'summary'] %}
     <div style="overflow-x: auto;">
         <table id="report-table" style="width: 100%; border-collapse: collapse; background: white;">
             <thead>
@@ -104,6 +122,17 @@
             </tbody>
         </table>
     </div>
+    {% elif report_type == 'chart' %}
+    <div style="width: 100%; height: 400px; margin-bottom: 2rem;">
+        <canvas id="progressChart"></canvas>
+    </div>
+    {% elif report_type == 'pie' %}
+    <div style="width: 100%; height: 400px; margin-bottom: 2rem; display: flex; justify-content: center;">
+        <div style="width: 400px; height: 400px;">
+            <canvas id="pieChart"></canvas>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% else %}
 <div class="card text-center">
@@ -137,6 +166,111 @@
         } catch (error) {
             console.error('Error copying TSV:', error);
             showMessage('Failed to copy table data', 'error');
+        }
+    }
+    
+    // Chart rendering
+    let currentChart = null;
+    
+    {% if report_type == 'chart' and chart_data %}
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('progressChart').getContext('2d');
+        currentChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: {{ chart_data.students | tojson }},
+                datasets: [{
+                    label: 'Total Successful Attempts',
+                    data: {{ chart_data.totals | tojson }},
+                    backgroundColor: [
+                        '#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1',
+                        '#fd7e14', '#20c997', '#e83e8c', '#6c757d', '#17a2b8'
+                    ],
+                    borderColor: '#333',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Student Progress - Total Successful Attempts',
+                        font: { size: 16, weight: 'bold' }
+                    },
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Successful Attempts'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Students'
+                        }
+                    }
+                }
+            }
+        });
+    });
+    {% elif report_type == 'pie' and chart_data %}
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('pieChart').getContext('2d');
+        currentChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: {{ chart_data.labels | tojson }},
+                datasets: [{
+                    data: {{ chart_data.data | tojson }},
+                    backgroundColor: [
+                        '#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1',
+                        '#fd7e14', '#20c997', '#e83e8c', '#6c757d', '#17a2b8',
+                        '#f8f9fa', '#343a40', '#495057', '#6c757d', '#adb5bd'
+                    ],
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Objective Distribution - Total Attempts',
+                        font: { size: 16, weight: 'bold' }
+                    },
+                    legend: {
+                        display: true,
+                        position: 'right',
+                        labels: {
+                            boxWidth: 12,
+                            padding: 10
+                        }
+                    }
+                }
+            }
+        });
+    });
+    {% endif %}
+    
+    // Download chart function
+    function downloadChart() {
+        if (currentChart) {
+            const url = currentChart.toBase64Image();
+            const link = document.createElement('a');
+            link.download = 'therapy_chart_{{ report_type }}_{{ start_date }}.png';
+            link.href = url;
+            link.click();
         }
     }
     
