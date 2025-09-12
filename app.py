@@ -28,19 +28,7 @@ else:
     # Development environment
     app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
 
-# Configure cookies for cross-site OAuth (required for Replit iframe)
-if os.environ.get("REPLIT_DEPLOYMENT") == "1" or os.environ.get("REPLIT_DEV_DOMAIN"):
-    app.config.update(
-        SESSION_COOKIE_SAMESITE='None',
-        SESSION_COOKIE_SECURE=True,
-        REMEMBER_COOKIE_SAMESITE='None',
-        REMEMBER_COOKIE_SECURE=True,
-    )
-else:
-    app.config.update(
-        SESSION_COOKIE_SAMESITE='Lax',
-        SESSION_COOKIE_SECURE=False,
-    )
+# Cookie configuration moved below for consistency
 
 # Remove SERVER_NAME configuration to let Flask use the actual request host
 # This ensures OAuth redirect_uri matches the domain the user is actually on
@@ -48,8 +36,16 @@ else:
 # Configure file upload limits (10MB max)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 
-# Configure for HTTPS on Replit
+# Configure for HTTPS on Replit with proper proxy handling
 app.config['PREFERRED_URL_SCHEME'] = 'https'
+
+# Essential: Configure secure session cookies for OAuth iframe support  
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE='None',
+    REMEMBER_COOKIE_SECURE=True,
+    REMEMBER_COOKIE_SAMESITE='None'
+)
 
 # Configure OAuth transport security based on environment
 import os

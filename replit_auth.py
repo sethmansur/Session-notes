@@ -143,8 +143,9 @@ def make_replit_blueprint():
         g.browser_session_key = session['_browser_session_key']
         
         # CRITICAL: Set redirect_url BEFORE accessing replit_bp.session
-        from flask import url_for
-        replit_bp.redirect_url = url_for('replit_auth.authorized', _external=True, _scheme='https')
+        from flask import request, url_for
+        # Force HTTPS redirect_uri using actual request host
+        replit_bp.redirect_url = f"https://{request.host}/auth/replit_auth/authorized"
         
         # Now it's safe to access the session - it will use the correct redirect_url
         g.flask_dance_replit = replit_bp.session
