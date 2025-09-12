@@ -40,8 +40,16 @@ app.config['PREFERRED_URL_SCHEME'] = 'https'
 import os
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-# Stripe configuration
-stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
+# Stripe configuration with error handling
+stripe_secret_key = os.environ.get('STRIPE_SECRET_KEY')
+if not stripe_secret_key:
+    logging.warning("STRIPE_SECRET_KEY not set - payment functionality will be disabled")
+    # Set a placeholder to prevent None errors, but payments will fail gracefully
+    stripe.api_key = None
+else:
+    stripe.api_key = stripe_secret_key
+
+# Domain configuration with fallback handling
 YOUR_DOMAIN = os.environ.get('REPLIT_DEV_DOMAIN') if os.environ.get('REPLIT_DEPLOYMENT') != '1' else os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else 'localhost:5000'
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
@@ -189,8 +197,13 @@ def manual_logout():
 def make_session_permanent():
     session.permanent = True
 
-# Database configuration
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+# Database configuration with error handling
+database_url = os.environ.get("DATABASE_URL")
+if not database_url:
+    logging.error("DATABASE_URL environment variable is required but not set")
+    raise SystemExit("DATABASE_URL environment variable must be configured for the application to start")
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     'pool_pre_ping': True,
@@ -322,7 +335,8 @@ def handle_stripe_webhook():
     sig_header = request.headers.get('Stripe-Signature')
     
     if not stripe.api_key:
-        return '', 400
+        logging.error("Stripe webhook called but STRIPE_SECRET_KEY not configured")
+        return jsonify({'error': 'Payment processing not configured'}), 400
     
     endpoint_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
     if not endpoint_secret:
