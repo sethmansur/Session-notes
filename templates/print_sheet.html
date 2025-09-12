@@ -32,15 +32,16 @@
 
         .page {
             width: 8in; /* 8.5" - 0.5" margins */
-            height: auto; /* Let content determine height */
-            /* Narrow margins for maximum space usage */
+            height: 10.5in; /* Fixed height for reliable one-page fit */
+            display: grid;
+            grid-template-rows: auto 1fr; /* Header + students grid */
         }
 
-        /* Header Section */
+        /* Header Section - Compact */
         .header {
             border-bottom: 2px solid #000;
-            padding-bottom: 0.25in;
-            margin-bottom: 0.25in;
+            padding-bottom: 0.15in;
+            margin-bottom: 0.15in;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -81,18 +82,20 @@
             display: grid;
             grid-template-columns: 1fr;
             grid-template-rows: repeat(4, 1fr);
-            gap: 0.06in;
-            height: auto;
+            gap: 0.05in;
+            height: 100%; /* Use all available space */
         }
 
-        /* Individual Student Panel - Expanded */
+        /* Individual Student Panel - Constrained for fit */
         .student-panel {
             border: 2px solid #000;
-            padding: 0.06in;
+            padding: 0.05in;
             break-inside: avoid;
             font-size: 8px;
-            height: auto;
-            max-height: 2.4in;
+            height: 100%;
+            display: grid;
+            grid-template-rows: auto 1fr auto; /* name, objectives, notes */
+            overflow: hidden;
         }
 
         .student-name {
@@ -108,16 +111,18 @@
         .objectives-list {
             display: flex;
             flex-direction: column;
-            gap: 0.05in;
+            gap: 0.04in;
+            overflow: hidden; /* Prevent overflow beyond panel */
         }
 
         .objective-row {
             display: flex;
-            align-items: flex-start;
+            align-items: stretch; /* Allow boxes to use full height */
             border-bottom: 1px solid #ddd;
-            padding-bottom: 0.03in;
-            margin-bottom: 0.03in;
-            min-height: 0.4in;
+            padding-bottom: 0.02in;
+            margin-bottom: 0.02in;
+            min-height: 0.45in;
+            flex: 1;
         }
 
         .objective-text {
@@ -131,12 +136,14 @@
 
         /* Single Count Box per objective - Maximized for handwriting */
         .count-box {
-            width: 1.0in;
-            height: 0.7in;
+            width: 1.1in;
+            height: 100%; /* Use full available row height */
+            min-height: 0.7in;
             border: 2px solid #000;
             display: inline-block;
             background: white;
             margin-left: 0.05in;
+            flex-shrink: 0;
         }
 
         /* Notes area - Compact */
