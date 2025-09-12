@@ -184,6 +184,11 @@
                 title="Clear all counts for new session">
             🔄 Reset Session
         </button>
+        <button id="save-session-btn" class="btn btn-success" onclick="saveSession()" 
+                style="padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem; background: #28a745; color: white; border: none; margin-right: 0.5rem;"
+                title="Save current session data">
+            💾 Save Session
+        </button>
         <button id="print-sheet-btn" class="btn btn-secondary" onclick="generatePrintSheet()" 
                 style="padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem;"
                 disabled title="Select students to enable print sheet">
@@ -217,6 +222,7 @@
     let selectedStudents = [];
     let sessionDate = '{{ today }}';
     let studentsData = {{ students | tojson }};
+    let isDirectAccess = window.location.pathname.startsWith('/direct');
     
     // Update session date when changed
     document.getElementById('session-date').addEventListener('change', function() {
@@ -333,7 +339,8 @@
         }
         
         const studentIds = selectedStudents.map(s => s.id).join(',');
-        const printUrl = `/app/print/sheet?student_ids=${studentIds}&date=${sessionDate}&boxes=10&auto_print=true`;
+        const printRoute = isDirectAccess ? '/direct/print/sheet' : '/app/print/sheet';
+        const printUrl = `${printRoute}?student_ids=${studentIds}&date=${sessionDate}&boxes=10&auto_print=true`;
         
         // Open in new window/tab for printing
         window.open(printUrl, '_blank', 'width=800,height=600');
@@ -349,7 +356,8 @@
                 params.append('student_id', student.id);
             });
             
-            const response = await fetch(`/app/event/counts?${params.toString()}`);
+            const countsRoute = isDirectAccess ? '/direct/event/counts' : '/app/event/counts';
+            const response = await fetch(`${countsRoute}?${params.toString()}`);
             const result = await response.json();
             
             if (result.counts) {
@@ -437,7 +445,8 @@
     // Shared function to update count and prompt level on server
     async function updateCountOnServer(studentId, objectiveId, count, promptLevel = '') {
         try {
-            const response = await fetch('/app/event/update', {
+            const updateRoute = isDirectAccess ? '/direct/event/update' : '/app/event/update';
+            const response = await fetch(updateRoute, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -464,6 +473,61 @@
         }
     }
     
+    // Save session - mark session as completed with timestamp
+    async function saveSession() {
+        try {
+            const saveBtn = document.getElementById('save-session-btn');
+            const originalText = saveBtn.innerHTML;
+            
+            // Visual feedback during save
+            saveBtn.innerHTML = '⏳ Saving...';
+            saveBtn.disabled = true;
+            saveBtn.style.background = '#ffc107';
+            
+            const saveRoute = isDirectAccess ? '/direct/save_session' : '/app/save_session';
+            const response = await fetch(saveRoute, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    date: sessionDate
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Success feedback
+                saveBtn.innerHTML = '✅ Saved!';
+                saveBtn.style.background = '#28a745';
+                showMessage('Session saved successfully!', 'success');
+                
+                // Reset button after 2 seconds
+                setTimeout(() => {
+                    saveBtn.innerHTML = originalText;
+                    saveBtn.disabled = false;
+                }, 2000);
+            } else {
+                throw new Error(result.error || 'Save failed');
+            }
+        } catch (error) {
+            // Error feedback
+            const saveBtn = document.getElementById('save-session-btn');
+            saveBtn.innerHTML = '❌ Failed';
+            saveBtn.style.background = '#dc3545';
+            showMessage('Failed to save session: ' + error.message, 'error');
+        } finally {
+            // Always reset button after 3 seconds (success or error)
+            const saveBtn = document.getElementById('save-session-btn');
+            setTimeout(() => {
+                saveBtn.innerHTML = '💾 Save Session';
+                saveBtn.style.background = '#28a745';
+                saveBtn.disabled = false;
+            }, 3000);
+        }
+    }
+    
     // Reset session - clear all counts
     async function resetSession() {
         if (!confirm('Are you sure you want to reset all counts for a new session? This will clear all current data.')) {
@@ -471,7 +535,8 @@
         }
         
         try {
-            const response = await fetch('/app/reset_session', {
+            const resetRoute = isDirectAccess ? '/direct/reset_session' : '/app/reset_session';
+            const response = await fetch(resetRoute, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

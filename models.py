@@ -185,6 +185,7 @@ class Session(db.Model):
     date = db.Column(db.Date, nullable=False)
     
     created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Relationships
     organization = db.relationship('Organization', back_populates='sessions')

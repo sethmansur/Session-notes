@@ -666,6 +666,46 @@ def direct_decrement_event():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/direct/save_session', methods=['POST'])
+def direct_save_session():
+    """Mark session as saved/completed with timestamp (direct access)."""
+    try:
+        data = request.get_json()
+        session_date = data.get('date')
+        
+        if not session_date:
+            return jsonify({'error': 'Date is required'}), 400
+        
+        # Parse date
+        from datetime import datetime
+        date_obj = datetime.strptime(session_date, '%Y-%m-%d').date()
+        
+        # Get default organization
+        organization = Organization.query.first()
+        if not organization:
+            organization = Organization(name="Default Clinic", subdomain="default")
+            db.session.add(organization)
+            db.session.commit()
+        
+        # Get or create session
+        session = Session.query.filter_by(organization_id=organization.id, date=date_obj).first()
+        if not session:
+            session = Session(organization_id=organization.id, date=date_obj, created_at=datetime.now())
+            db.session.add(session)
+        
+        # Update session with save timestamp  
+        session.updated_at = datetime.now()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'saved_at': session.updated_at.isoformat(),
+            'message': f'Session for {session_date} saved successfully'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/direct/event/counts', methods=['GET'])
 def direct_get_counts():
     """Get existing counts for a date and students via direct access."""
@@ -702,6 +742,105 @@ def direct_get_counts():
         return jsonify({'counts': counts})
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/direct/event/update', methods=['POST'])
+def direct_update_event():
+    """Update count and prompt level for an objective on a date (direct access)."""
+    data = request.get_json()
+    date_str = data.get('date')
+    student_id = data.get('student_id')
+    objective_id = data.get('objective_id')
+    count = int(data.get('count', 0))
+    prompt_level = data.get('prompt_level', '')
+    activity = data.get('activity', '')
+    
+    if not all([date_str, student_id, objective_id]):
+        return jsonify({'error': 'Missing required parameters'}), 400
+    
+    if count < 0:
+        return jsonify({'error': 'Count cannot be negative'}), 400
+    
+    try:
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Get default organization
+        organization = Organization.query.first()
+        if not organization:
+            organization = Organization(name="Default Clinic", subdomain="default")
+            db.session.add(organization)
+            db.session.commit()
+        
+        # Get or create session
+        session = Session.query.filter_by(organization_id=organization.id, date=date_obj).first()
+        if not session:
+            session = Session(organization_id=organization.id, date=date_obj)
+            db.session.add(session)
+            db.session.commit()
+        
+        # Check if event exists
+        event = Event.query.filter_by(
+            session_id=session.id, 
+            student_id=student_id, 
+            objective_id=objective_id
+        ).first()
+        
+        if count == 0:
+            # Delete event if count is 0
+            if event:
+                db.session.delete(event)
+        else:
+            # Create or update event
+            if event:
+                event.count = count
+                event.prompt_level = prompt_level if prompt_level else event.prompt_level
+                event.activity = activity if activity else event.activity
+            else:
+                event = Event(
+                    session_id=session.id,
+                    student_id=student_id,
+                    objective_id=objective_id,
+                    count=count,
+                    prompt_level=prompt_level if prompt_level else None,
+                    activity=activity if activity else None
+                )
+                db.session.add(event)
+        
+        db.session.commit()
+        return jsonify({'success': True, 'count': count})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/direct/reset_session', methods=['POST'])
+def direct_reset_session():
+    """Reset all counts for the current session date (direct access)."""
+    try:
+        data = request.get_json()
+        session_date = data.get('date')
+        
+        if not session_date:
+            return jsonify({'error': 'Date is required'}), 400
+        
+        date_obj = datetime.strptime(session_date, '%Y-%m-%d').date()
+        
+        # Get default organization
+        organization = Organization.query.first()
+        if not organization:
+            organization = Organization(name="Default Clinic", subdomain="default")
+            db.session.add(organization)
+            db.session.commit()
+        
+        # Get session for the date
+        session = Session.query.filter_by(organization_id=organization.id, date=date_obj).first()
+        if session:
+            # Delete all events for this session
+            Event.query.filter_by(session_id=session.id).delete()
+            db.session.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/direct/print/sheet')
@@ -1385,6 +1524,33 @@ def reset_session():
             db.session.commit()
         
         return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/app/save_session', methods=['POST'])
+def save_session():
+    """Mark session as saved/completed with timestamp."""
+    try:
+        data = request.get_json()
+        session_date = data.get('date')
+        
+        if not session_date:
+            return jsonify({'error': 'Date is required'}), 400
+        
+        # Get or create session for the date
+        session_id = get_or_create_session(session_date)
+        session = Session.query.get(session_id)
+        
+        # Update session with save timestamp
+        session.updated_at = datetime.now()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'saved_at': session.updated_at.isoformat(),
+            'message': f'Session for {session_date} saved successfully'
+        })
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
