@@ -2271,63 +2271,6 @@ def report():
             
             chart_data = dashboard_data
             
-            # Apply date and student filters (only for student_dashboard, not comprehensive_dashboard)
-            if start_date and end_date:
-                dashboard_query = dashboard_query.filter(
-                    and_(Session.date >= start_date, Session.date <= end_date)
-                )
-            elif start_date:
-                dashboard_query = dashboard_query.filter(Session.date >= start_date)
-            elif end_date:
-                dashboard_query = dashboard_query.filter(Session.date <= end_date)
-            
-            if student_id:
-                dashboard_query = dashboard_query.filter(Student.id == student_id)
-            
-            session_details = dashboard_query.order_by(Session.date.desc(), Student.first_name).all()
-            
-            # Calculate totals per student
-            student_totals = {}
-            student_sessions = {}
-            
-            for row in session_details:
-                student = row.student
-                if student not in student_totals:
-                    student_totals[student] = 0
-                    student_sessions[student] = set()
-                
-                student_totals[student] += row.count
-                student_sessions[student].add(row.date.isoformat())
-            
-            # Group sessions by date for timeline view
-            sessions_by_date = {}
-            for row in session_details:
-                date_key = row.date.isoformat()
-                if date_key not in sessions_by_date:
-                    sessions_by_date[date_key] = []
-                
-                sessions_by_date[date_key].append({
-                    'student': row.student,
-                    'objective': row.objective,
-                    'count': row.count,
-                    'prompt_level': row.prompt_level or 'Independent',
-                    'notes': row.notes or ''
-                })
-            
-            # Fix filtered student display - get the correct selected student
-            filtered_student = None
-            if student_id and students:
-                selected_student = next((s for s in students if str(s.id) == str(student_id)), None)
-                filtered_student = selected_student.first_name if selected_student else None
-            
-            chart_data = {
-                'type': 'student_dashboard',
-                'student_totals': student_totals,
-                'total_sessions': {student: len(sessions) for student, sessions in student_sessions.items()},
-                'sessions_by_date': dict(sorted(sessions_by_date.items(), reverse=True)),
-                'date_range': {'start': start_date, 'end': end_date},
-                'filtered_student': filtered_student
-            }
     
     # Final debug logging
     logging.info(f"Rendering report: type={report_type}, data_count={len(report_data) if report_data else 0}")
