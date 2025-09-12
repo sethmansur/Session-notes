@@ -2170,6 +2170,99 @@ def report():
              .join(Objective, Event.objective_id == Objective.id)\
              .filter(Student.organization_id == organization.id)
             
+            # Apply date filters
+            if start_date and end_date:
+                dashboard_query = dashboard_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            elif start_date:
+                dashboard_query = dashboard_query.filter(Session.date >= start_date)
+            elif end_date:
+                dashboard_query = dashboard_query.filter(Session.date <= end_date)
+            
+            # Apply student filter
+            if student_id:
+                dashboard_query = dashboard_query.filter(Student.id == student_id)
+            
+            # Execute query and get data
+            dashboard_data = dashboard_query.order_by(Session.date.desc()).all()
+            
+            # Create session snapshots and summary data
+            sessions_summary = {}
+            student_totals = {}
+            
+            for event in dashboard_data:
+                # Group by date for session snapshots
+                date_key = event.date.isoformat()
+                if date_key not in sessions_summary:
+                    sessions_summary[date_key] = {
+                        'date': event.date,
+                        'events': [],
+                        'total_attempts': 0,
+                        'students': set()
+                    }
+                
+                sessions_summary[date_key]['events'].append({
+                    'student': event.student,
+                    'objective': event.objective,
+                    'count': event.count,
+                    'prompt_level': event.prompt_level,
+                    'notes': event.notes
+                })
+                sessions_summary[date_key]['total_attempts'] += event.count
+                sessions_summary[date_key]['students'].add(event.student)
+                
+                # Calculate student totals
+                if event.student not in student_totals:
+                    student_totals[event.student] = {
+                        'total_attempts': 0,
+                        'sessions': set(),
+                        'objectives': set(),
+                        'latest_session': None
+                    }
+                
+                student_totals[event.student]['total_attempts'] += event.count
+                student_totals[event.student]['sessions'].add(event.date)
+                student_totals[event.student]['objectives'].add(event.objective)
+                if not student_totals[event.student]['latest_session'] or event.date > student_totals[event.student]['latest_session']:
+                    student_totals[event.student]['latest_session'] = event.date
+            
+            # Convert sets to counts and format for template
+            for student in student_totals:
+                student_totals[student]['session_count'] = len(student_totals[student]['sessions'])
+                student_totals[student]['objective_count'] = len(student_totals[student]['objectives'])
+                del student_totals[student]['sessions']
+                del student_totals[student]['objectives']
+                if student_totals[student]['latest_session']:
+                    student_totals[student]['latest_session'] = student_totals[student]['latest_session'].isoformat()
+            
+            # Convert sessions set to list for template
+            for session in sessions_summary.values():
+                session['student_count'] = len(session['students'])
+                session['students'] = list(session['students'])
+            
+            # Calculate sessions count per student for template compatibility
+            student_session_counts = {}
+            for student in student_totals:
+                student_session_counts[student] = student_totals[student]['session_count']
+            
+            # Format sessions_by_date for template (convert from sessions_summary)
+            sessions_by_date = {}
+            for date_key, session_data in sessions_summary.items():
+                sessions_by_date[session_data['date'].strftime('%Y-%m-%d')] = session_data['events']
+            
+            chart_data = {
+                'type': 'student_dashboard',
+                'student_totals': {student: data['total_attempts'] for student, data in student_totals.items()},
+                'total_sessions': student_session_counts,
+                'sessions_by_date': dict(sorted(sessions_by_date.items(), reverse=True)),  # Most recent first
+                'filtered_student': Student.query.get(student_id).first_name if student_id and Student.query.get(student_id) else None,
+                'date_range': {
+                    'start': start_date,
+                    'end': end_date
+                }
+            }
+            
         elif report_type == 'comprehensive_dashboard':
             # Zoho-style comprehensive dashboard with advanced analytics
             dashboard_data = {}

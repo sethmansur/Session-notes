@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -587,13 +587,34 @@
     // Chart rendering
     let currentChart = null;
     
+    // Enhanced Chart.js loading mechanism
+    function waitForChart(callback) {
+        if (typeof Chart !== 'undefined') {
+            callback();
+        } else {
+            // Retry every 100ms up to 5 seconds
+            let attempts = 0;
+            const maxAttempts = 50;
+            const checkInterval = setInterval(() => {
+                attempts++;
+                if (typeof Chart !== 'undefined') {
+                    clearInterval(checkInterval);
+                    callback();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    console.error('Chart.js failed to load after 5 seconds');
+                    const chartContainer = document.querySelector('#progressChart, #pieChart');
+                    if (chartContainer) {
+                        chartContainer.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;"><p>Chart loading failed. Please refresh the page.</p></div>';
+                    }
+                }
+            }, 100);
+        }
+    }
+    
     {% if report_type == 'chart' and chart_data %}
     document.addEventListener('DOMContentLoaded', function() {
-        // Ensure Chart.js is loaded before using it
-        if (typeof Chart === 'undefined') {
-            console.error('Chart.js not loaded');
-            return;
-        }
+        waitForChart(function() {
         const ctx = document.getElementById('progressChart').getContext('2d');
         currentChart = new Chart(ctx, {
             type: 'line',
@@ -644,14 +665,11 @@
                 }
             }
         });
+        });
     });
     {% elif report_type == 'pie' and chart_data %}
     document.addEventListener('DOMContentLoaded', function() {
-        // Ensure Chart.js is loaded before using it
-        if (typeof Chart === 'undefined') {
-            console.error('Chart.js not loaded');
-            return;
-        }
+        waitForChart(function() {
         const ctx = document.getElementById('pieChart').getContext('2d');
         currentChart = new Chart(ctx, {
             type: 'pie',
@@ -687,6 +705,7 @@
                     }
                 }
             }
+        });
         });
     });
     {% endif %}
