@@ -49,4 +49,4 @@ externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["python", "app.py"]
+run = ["gunicorn", "-k", "gthread", "-w", "2", "--threads", "8", "-b", "0.0.0.0:5000", "--timeout", "120", "app:app"]
