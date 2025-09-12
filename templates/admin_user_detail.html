@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .admin-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
+    .user-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+    .detail-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .detail-row:last-child {
+        border-bottom: none;
+    }
+    .detail-label {
+        font-weight: 600;
+        color: #333;
+    }
+    .detail-value {
+        color: #666;
+    }
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .status-trial { background: #fff3cd; color: #856404; }
+    .status-active { background: #d4edda; color: #155724; }
+    .status-canceled { background: #f8d7da; color: #721c24; }
+    .admin-actions {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .action-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+    .btn-admin {
+        padding: 0.75rem 1rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+        text-align: center;
+        transition: all 0.3s;
+    }
+    .btn-primary { background: #667eea; color: white; }
+    .btn-warning { background: #ffc107; color: #212529; }
+    .btn-success { background: #28a745; color: white; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-admin:hover {
+        transform: translateY(-1px);
+        text-decoration: none;
+        opacity: 0.9;
+    }
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    .form-group label {
+        display: block;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+    .form-group select {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+    }
+</style>
+
+<div class="admin-header">
+    <h1>👤 User Details</h1>
+    <p>Managing {{ user.first_name }} {{ user.last_name }}</p>
+    <a href="/admin/users" style="color: white; text-decoration: none; opacity: 0.8;">← Back to Users</a>
+</div>
+
+<div class="user-details">
+    <div class="detail-card">
+        <h3 style="margin: 0 0 1rem 0; color: #333;">👤 User Information</h3>
+        <div class="detail-row">
+            <span class="detail-label">Full Name:</span>
+            <span class="detail-value">{{ user.first_name }} {{ user.last_name }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Email:</span>
+            <span class="detail-value">{{ user.email or 'No email' }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">User ID:</span>
+            <span class="detail-value">{{ user.id }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Created:</span>
+            <span class="detail-value">{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Last Updated:</span>
+            <span class="detail-value">{{ user.updated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+        </div>
+    </div>
+    
+    <div class="detail-card">
+        <h3 style="margin: 0 0 1rem 0; color: #333;">💳 Subscription Details</h3>
+        <div class="detail-row">
+            <span class="detail-label">Status:</span>
+            <span class="status-badge status-{{ user.subscription_status }}">
+                {{ user.subscription_status.title() }}
+                {% if user.subscription_status == 'trial' %}
+                ({{ activity_stats.trial_days_left }} days left)
+                {% endif %}
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Plan:</span>
+            <span class="detail-value">{{ user.plan_type.title() }}</span>
+        </div>
+        {% if user.stripe_customer_id %}
+        <div class="detail-row">
+            <span class="detail-label">Stripe Customer:</span>
+            <span class="detail-value">{{ user.stripe_customer_id }}</span>
+        </div>
+        {% endif %}
+        <div class="detail-row">
+            <span class="detail-label">Trial Started:</span>
+            <span class="detail-value">{{ user.trial_start_date.strftime('%Y-%m-%d') }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="user-details">
+    <div class="detail-card">
+        <h3 style="margin: 0 0 1rem 0; color: #333;">📊 Activity Stats</h3>
+        <div class="detail-row">
+            <span class="detail-label">Total Students:</span>
+            <span class="detail-value">{{ activity_stats.total_students }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Total Sessions:</span>
+            <span class="detail-value">{{ activity_stats.total_sessions }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Last Login:</span>
+            <span class="detail-value">{{ activity_stats.last_login.strftime('%Y-%m-%d %H:%M') if activity_stats.last_login else 'Never' }}</span>
+        </div>
+    </div>
+    
+    <div class="detail-card">
+        <h3 style="margin: 0 0 1rem 0; color: #333;">🎯 Account Limits</h3>
+        <div class="detail-row">
+            <span class="detail-label">Student Limit:</span>
+            <span class="detail-value">{{ user.get_student_limit() or 'Unlimited' }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Objectives per Student:</span>
+            <span class="detail-value">{{ user.get_objectives_per_student_limit() or 'Unlimited' }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Active Subscription:</span>
+            <span class="detail-value">{{ 'Yes' if user.has_active_subscription() else 'No' }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="admin-actions">
+    <h3 style="margin: 0 0 1rem 0; color: #333;">🔧 Admin Actions</h3>
+    
+    <form method="POST" action="/admin/users/{{ user.id }}/update">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>Subscription Status:</label>
+                <select name="subscription_status">
+                    <option value="trial" {% if user.subscription_status == 'trial' %}selected{% endif %}>Trial</option>
+                    <option value="active" {% if user.subscription_status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="past_due" {% if user.subscription_status == 'past_due' %}selected{% endif %}>Past Due</option>
+                    <option value="canceled" {% if user.subscription_status == 'canceled' %}selected{% endif %}>Canceled</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Plan Type:</label>
+                <select name="plan_type">
+                    <option value="freemium" {% if user.plan_type == 'freemium' %}selected{% endif %}>Freemium</option>
+                    <option value="individual" {% if user.plan_type == 'individual' %}selected{% endif %}>Individual</option>
+                    <option value="team" {% if user.plan_type == 'team' %}selected{% endif %}>Team</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="action-buttons">
+            <button type="submit" class="btn-admin btn-primary">💾 Update Subscription</button>
+            <button type="submit" name="extend_trial" value="1" class="btn-admin btn-warning">⏰ Extend Trial (7 days)</button>
+        </div>
+    </form>
+    
+    <div class="action-buttons" style="margin-top: 1rem;">
+        <a href="mailto:{{ user.email }}" class="btn-admin btn-success">📧 Email User</a>
+        <a href="/admin/users/{{ user.id }}/export" class="btn-admin btn-primary">📄 Export Data</a>
+    </div>
+</div>
+
+<div style="margin-top: 2rem; padding: 1.5rem; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+    <h4 style="color: #856404; margin: 0 0 0.5rem 0;">⚠️ Admin Actions</h4>
+    <p style="margin: 0; color: #856404;">Changes to user subscriptions take effect immediately. Use caution when modifying active subscriptions.</p>
+</div>
+{% endblock %}

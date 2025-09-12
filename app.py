@@ -166,8 +166,8 @@ def get_or_create_session(date_str):
 
 @app.route('/')
 def index():
-    """Redirect to student data space (no login required when auth disabled)."""
-    return redirect(url_for('students'))
+    """Landing page for SessionNotes SaaS - marketing website"""
+    return render_template('landing.html')
 
 @app.route('/app')
 @require_subscription
@@ -219,6 +219,7 @@ def get_pricing_info(plan_type, billing_period='monthly', user_count=1):
 
 # Subscription management routes
 @app.route('/upgrade')
+@app.route('/app/upgrade')
 def upgrade():
     """Upgrade page with subscription plans"""
     days_left = 0
@@ -243,6 +244,156 @@ def upgrade():
                          days_left=days_left, 
                          current_plan=current_plan,
                          pricing=pricing)
+
+# Admin Dashboard Routes (PROTECTED)
+@app.route('/admin')
+@require_subscription
+def admin_dashboard():
+    """Internal user management dashboard for backend subscription management"""
+    from sqlalchemy import func
+    
+    # Get user statistics
+    total_users = User.query.count()
+    trial_users = User.query.filter_by(subscription_status='trial').count()
+    active_subscribers = User.query.filter_by(subscription_status='active').count()
+    freemium_users = User.query.filter_by(plan_type='freemium').count()
+    
+    # Recent users (last 30 days)
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    recent_users = User.query.filter(User.created_at >= thirty_days_ago).count()
+    
+    # Revenue metrics (simulated for now)
+    monthly_revenue = active_subscribers * 9  # Assuming $9 avg plan
+    
+    stats = {
+        'total_users': total_users,
+        'trial_users': trial_users,
+        'active_subscribers': active_subscribers,
+        'freemium_users': freemium_users,
+        'recent_users': recent_users,
+        'monthly_revenue': monthly_revenue
+    }
+    
+    return render_template('admin_dashboard.html', stats=stats)
+
+@app.route('/admin/users')
+@require_subscription
+def admin_users():
+    """User list with search and filtering"""
+    search = request.args.get('search', '')
+    status_filter = request.args.get('status', '')
+    plan_filter = request.args.get('plan', '')
+    page = int(request.args.get('page', 1))
+    per_page = 50
+    
+    query = User.query
+    
+    # Apply filters
+    if search:
+        from sqlalchemy import or_
+        query = query.filter(or_(
+            User.email.contains(search),
+            User.first_name.contains(search),
+            User.last_name.contains(search)
+        ))
+    
+    if status_filter:
+        query = query.filter(User.subscription_status == status_filter)
+        
+    if plan_filter:
+        query = query.filter(User.plan_type == plan_filter)
+    
+    # Paginate results
+    users = query.order_by(User.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False)
+    
+    return render_template('admin_users.html', 
+                         users=users, 
+                         search=search, 
+                         status_filter=status_filter,
+                         plan_filter=plan_filter)
+
+@app.route('/admin/users/<user_id>')
+@require_subscription
+def admin_user_detail(user_id):
+    """Individual user management page"""
+    user = User.query.get_or_404(user_id)
+    
+    # Get user activity stats
+    user_orgs = [m.organization_id for m in user.memberships]
+    total_students = 0
+    total_sessions = 0
+    
+    if user_orgs:
+        total_students = Student.query.filter(Student.organization_id.in_(user_orgs)).count()
+        total_sessions = Session.query.filter(Session.organization_id.in_(user_orgs)).count()
+    
+    activity_stats = {
+        'total_students': total_students,
+        'total_sessions': total_sessions,
+        'last_login': user.updated_at,  # Approximate
+        'trial_days_left': user.days_left_in_trial() if user.subscription_status == 'trial' else 0
+    }
+    
+    return render_template('admin_user_detail.html', user=user, activity_stats=activity_stats)
+
+@app.route('/admin/users/<user_id>/update', methods=['POST'])
+@require_subscription
+def admin_update_user(user_id):
+    """Update user subscription status and plan"""
+    user = User.query.get_or_404(user_id)
+    
+    new_status = request.form.get('subscription_status')
+    new_plan = request.form.get('plan_type')
+    extend_trial = request.form.get('extend_trial')
+    
+    if new_status and new_status != user.subscription_status:
+        user.subscription_status = new_status
+        
+    if new_plan and new_plan != user.plan_type:
+        user.plan_type = new_plan
+        
+    if extend_trial:
+        # Extend trial by 7 days
+        user.trial_start_date = datetime.now()
+        user.subscription_status = 'trial'
+    
+    user.updated_at = datetime.now()
+    db.session.commit()
+    
+    return redirect(url_for('admin_user_detail', user_id=user_id))
+
+# GHL Webhook endpoint for lead integration
+@app.route('/webhook/ghl-leads', methods=['POST'])
+def ghl_webhook():
+    """Webhook endpoint for Go High Level lead data"""
+    try:
+        data = request.get_json()
+        
+        # Log the webhook data (for debugging)
+        logging.info(f"GHL Webhook received: {data}")
+        
+        # Extract lead information
+        email = data.get('email', '')
+        first_name = data.get('first_name', '')
+        last_name = data.get('last_name', '')
+        phone = data.get('phone', '')
+        
+        # TODO: Process lead data (create user, send welcome email, etc.)
+        # For now, just return success
+        
+        return jsonify({
+            'success': True,
+            'message': 'Lead data received successfully',
+            'lead_email': email
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"GHL Webhook error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to process webhook'
+        }), 400
 
 @app.route('/create-checkout-session', methods=['POST'])
 @require_subscription  
@@ -1146,6 +1297,7 @@ def delete_objective_item():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/app/collect')
+@require_subscription
 def collect():
     """Show data collection page. No login required."""
     # Get default organization
