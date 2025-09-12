@@ -27,8 +27,15 @@ def load_user(user_id):
     return User.query.get(user_id)
 
 class UserSessionStorage(BaseStorage):
+    """Hybrid storage: session for OAuth flow, database after login"""
 
     def get(self, blueprint):
+        # During OAuth flow (user not logged in), use session storage
+        if not current_user.is_authenticated:
+            session_key = f"flask_dance_token_{blueprint.name}"
+            return session.get(session_key)
+        
+        # After login, use database storage
         try:
             oauth_record = db.session.query(OAuth).filter_by(
                 user_id=current_user.get_id(),
@@ -41,6 +48,19 @@ class UserSessionStorage(BaseStorage):
         return token
 
     def set(self, blueprint, token):
+        # During OAuth flow (user not logged in), use session storage
+        if not current_user.is_authenticated:
+            session_key = f"flask_dance_token_{blueprint.name}"
+            session[session_key] = token
+            session.modified = True
+            return
+        
+        # After login, move to database storage and clean up session
+        session_key = f"flask_dance_token_{blueprint.name}"
+        if session_key in session:
+            del session[session_key]
+            session.modified = True
+            
         db.session.query(OAuth).filter_by(
             user_id=current_user.get_id(),
             browser_session_key=g.browser_session_key,
@@ -55,11 +75,18 @@ class UserSessionStorage(BaseStorage):
         db.session.commit()
 
     def delete(self, blueprint):
-        db.session.query(OAuth).filter_by(
-            user_id=current_user.get_id(),
-            browser_session_key=g.browser_session_key,
-            provider=blueprint.name).delete()
-        db.session.commit()
+        # Clean up both session and database storage
+        session_key = f"flask_dance_token_{blueprint.name}"
+        if session_key in session:
+            del session[session_key]
+            session.modified = True
+            
+        if current_user.is_authenticated:
+            db.session.query(OAuth).filter_by(
+                user_id=current_user.get_id(),
+                browser_session_key=g.browser_session_key,
+                provider=blueprint.name).delete()
+            db.session.commit()
 
 def make_replit_blueprint():
     try:
