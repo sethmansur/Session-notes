@@ -122,6 +122,10 @@ def require_subscription(f):
     
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Bypass authentication if AUTH_DISABLED=1
+        if os.environ.get('AUTH_DISABLED') == '1':
+            return f(*args, **kwargs)
+        
         # First require login
         if not current_user.is_authenticated:
             return redirect('/auth/replit_auth')
@@ -162,8 +166,8 @@ def get_or_create_session(date_str):
 
 @app.route('/')
 def index():
-    """Public marketing page for SessionNotes SaaS."""
-    return render_template('marketing.html')
+    """Redirect to student data space (no login required when auth disabled)."""
+    return redirect(url_for('students'))
 
 @app.route('/app')
 @require_subscription
@@ -176,7 +180,7 @@ def app_dashboard():
 def upgrade():
     """Upgrade page with subscription plans"""
     days_left = 0
-    if current_user.subscription_status == 'trial':
+    if hasattr(current_user, 'subscription_status') and current_user.subscription_status == 'trial':
         days_left = current_user.days_left_in_trial()
     
     return render_template('upgrade.html', days_left=days_left)
@@ -185,6 +189,9 @@ def upgrade():
 @require_subscription  
 def create_checkout_session():
     """Create Stripe checkout session"""
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'Payments disabled - authentication required'}), 403
+    
     if not stripe.api_key:
         return jsonify({'error': 'Payment processing not configured'}), 500
     
