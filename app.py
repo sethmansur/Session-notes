@@ -1880,6 +1880,11 @@ def report():
             
         report_data = report_data.group_by(Student.id, Objective.id)\
                                  .order_by(Student.first_name, Objective.objective_text).all()
+        
+        # Debug logging for summary report
+        logging.info(f"Summary report found {len(report_data)} records")
+        if len(report_data) > 0:
+            logging.info(f"Sample summary record: {report_data[0]}")
     else:
         # By objective report: show detailed events, but include zero-count objectives
         event_query = db.session.query(Event)\
@@ -1896,12 +1901,13 @@ def report():
         if student_id:
             event_query = event_query.filter(Student.id == student_id)
         
-        # Get events data
+        # Get events data including prompt level
         event_data = event_query.with_entities(
             Session.date.label('date'),
             Student.first_name.label('student'),
             Objective.objective_text.label('objective'),
             Event.count.label('count'),
+            Event.prompt_level.label('prompt_level'),
             Event.notes.label('notes')
         ).order_by(Session.date.desc(), Student.first_name, Objective.objective_text).all()
         
@@ -1917,20 +1923,28 @@ def report():
         for student, objective in all_objectives:
             key = (student.first_name, objective.objective_text)
             if key not in event_objective_ids:
-                # Create a mock row for zero count
+                # Create a mock row for zero count including prompt level
                 from collections import namedtuple
-                Row = namedtuple('Row', ['date', 'student', 'objective', 'count', 'notes'])
+                Row = namedtuple('Row', ['date', 'student', 'objective', 'count', 'prompt_level', 'notes'])
                 zero_entries.append(Row(
                     date=None,
                     student=student.first_name,
                     objective=objective.objective_text,
                     count=0,
+                    prompt_level='Not Attempted',
                     notes=''
                 ))
         
         # Combine and sort
         report_data = list(event_data) + zero_entries
         report_data.sort(key=lambda x: (x.student, x.objective, x.date or date.min))
+        
+        # Debug logging to understand data retrieval
+        logging.info(f"Report query found {len(event_data)} events and {len(zero_entries)} zero entries")
+        if len(event_data) > 0:
+            logging.info(f"Sample event: {event_data[0]}")
+        if len(report_data) == 0:
+            logging.info(f"No data found. Organization: {organization.id}, Students: {len(students)}, Start: {start_date}, End: {end_date}")
     
     # For chart types, prepare chart data
     chart_data = None
@@ -2155,7 +2169,108 @@ def report():
              .join(Objective, Event.objective_id == Objective.id)\
              .filter(Student.organization_id == organization.id)
             
-            # Apply date and student filters
+        elif report_type == 'comprehensive_dashboard':
+            # Zoho-style comprehensive dashboard with advanced analytics
+            dashboard_data = {}
+            
+            # If student is selected, create detailed individual dashboard
+            if student_id:
+                selected_student = Student.query.get(student_id)
+                if selected_student:
+                    # Get all data for this student
+                    student_events = db.session.query(
+                        Session.date,
+                        Objective.objective_text,
+                        Event.count,
+                        Event.prompt_level,
+                        Event.notes
+                    ).select_from(Event)\
+                     .join(Session, Event.session_id == Session.id)\
+                     .join(Objective, Event.objective_id == Objective.id)\
+                     .filter(Event.student_id == student_id)
+                    
+                    # Apply date filters
+                    if start_date and end_date:
+                        student_events = student_events.filter(
+                            and_(Session.date >= start_date, Session.date <= end_date)
+                        )
+                    
+                    events_data = student_events.order_by(Session.date.desc()).all()
+                    
+                    # Calculate metrics
+                    total_attempts = sum(e.count for e in events_data)
+                    total_sessions = len(set(e.date for e in events_data))
+                    active_objectives = len(set(e.objective_text for e in events_data))
+                    
+                    # Prompt level distribution
+                    prompt_levels = {}
+                    for event in events_data:
+                        if event.prompt_level:
+                            prompt_levels[event.prompt_level] = prompt_levels.get(event.prompt_level, 0) + event.count
+                    
+                    # Progress by objective
+                    objectives_progress = {}
+                    for event in events_data:
+                        obj = event.objective_text[:50] + '...' if len(event.objective_text) > 50 else event.objective_text
+                        if obj not in objectives_progress:
+                            objectives_progress[obj] = {'total': 0, 'sessions': set(), 'latest_prompt': 'Unknown'}
+                        objectives_progress[obj]['total'] += event.count
+                        objectives_progress[obj]['sessions'].add(event.date)
+                        if event.prompt_level:
+                            objectives_progress[obj]['latest_prompt'] = event.prompt_level
+                    
+                    # Convert sessions sets to counts
+                    for obj in objectives_progress:
+                        objectives_progress[obj]['session_count'] = len(objectives_progress[obj]['sessions'])
+                        del objectives_progress[obj]['sessions']
+                    
+                    dashboard_data = {
+                        'type': 'individual',
+                        'student_name': selected_student.first_name,
+                        'student_id': student_id,
+                        'total_attempts': total_attempts,
+                        'total_sessions': total_sessions,
+                        'active_objectives': active_objectives,
+                        'prompt_levels': prompt_levels,
+                        'objectives_progress': objectives_progress,
+                        'recent_events': events_data[:10]  # Last 10 events
+                    }
+            else:
+                # Organization overview dashboard
+                all_events = db.session.query(
+                    Student.first_name,
+                    func.sum(Event.count).label('total_attempts'),
+                    func.count(Session.date.distinct()).label('sessions'),
+                    func.count(Event.objective_id.distinct()).label('objectives')
+                ).select_from(Event)\
+                 .join(Student, Event.student_id == Student.id)\
+                 .join(Session, Event.session_id == Session.id)\
+                 .filter(Student.organization_id == organization.id)
+                
+                # Apply date filters
+                if start_date and end_date:
+                    all_events = all_events.filter(
+                        and_(Session.date >= start_date, Session.date <= end_date)
+                    )
+                
+                student_summaries = all_events.group_by(Student.id).all()
+                
+                dashboard_data = {
+                    'type': 'overview',
+                    'student_summaries': [{
+                        'name': s.first_name,
+                        'total_attempts': s.total_attempts,
+                        'sessions': s.sessions,
+                        'objectives': s.objectives
+                    } for s in student_summaries],
+                    'total_students': len(student_summaries),
+                    'total_attempts': sum(s.total_attempts for s in student_summaries),
+                    'total_sessions': sum(s.sessions for s in student_summaries)
+                }
+            
+            chart_data = dashboard_data
+            
+            # Apply date and student filters (only for student_dashboard, not comprehensive_dashboard)
             if start_date and end_date:
                 dashboard_query = dashboard_query.filter(
                     and_(Session.date >= start_date, Session.date <= end_date)
@@ -2213,6 +2328,9 @@ def report():
                 'filtered_student': filtered_student
             }
     
+    # Final debug logging
+    logging.info(f"Rendering report: type={report_type}, data_count={len(report_data) if report_data else 0}")
+    
     return render_template('report.html', 
                          report_data=report_data,
                          students=students,
@@ -2221,6 +2339,134 @@ def report():
                          student_id=student_id,
                          report_type=report_type,
                          chart_data=chart_data)
+
+@app.route('/app/report.pdf')
+@require_subscription
+def report_pdf():
+    """Export report as PDF."""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib.colors import black, white, lightgrey, green, red, yellow
+        from reportlab.lib import colors
+        import io
+        from datetime import datetime
+        
+        start_date = request.args.get('start_date', '')
+        end_date = request.args.get('end_date', '')
+        student_id = request.args.get('student_id', '')
+        report_type = request.args.get('type', 'by_objective')
+        
+        # Get the same data as the regular report
+        organization = Organization.query.first()
+        if not organization:
+            return "No organization found", 404
+        
+        # Get students for context
+        students = Student.query.filter_by(organization_id=organization.id).all()
+        selected_student = None
+        if student_id:
+            selected_student = next((s for s in students if str(s.id) == str(student_id)), None)
+        
+        # Create PDF in memory
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+        
+        # Create styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, spaceAfter=30, textColor=colors.darkblue)
+        heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'], fontSize=12, spaceAfter=12, textColor=colors.black)
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Speech Therapy Report - {report_type.replace('_', ' ').title()}", title_style))
+        story.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", styles['Normal']))
+        story.append(Spacer(1, 12))
+        
+        # Report details
+        details = [
+            f"Date Range: {start_date} to {end_date}" if start_date and end_date else "All dates",
+            f"Student: {selected_student.first_name}" if selected_student else "All students",
+            f"Organization: {organization.name}"
+        ]
+        for detail in details:
+            story.append(Paragraph(detail, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Get report data (simplified version)
+        event_query = db.session.query(Event)\
+            .join(Session, Event.session_id == Session.id)\
+            .join(Student, Event.student_id == Student.id)\
+            .join(Objective, Event.objective_id == Objective.id)\
+            .filter(Student.organization_id == organization.id)
+        
+        # Apply filters
+        if start_date:
+            event_query = event_query.filter(Session.date >= start_date)
+        if end_date:
+            event_query = event_query.filter(Session.date <= end_date)
+        if student_id:
+            event_query = event_query.filter(Student.id == student_id)
+        
+        event_data = event_query.with_entities(
+            Session.date.label('date'),
+            Student.first_name.label('student'),
+            Objective.objective_text.label('objective'),
+            Event.count.label('count'),
+            Event.prompt_level.label('prompt_level')
+        ).order_by(Session.date.desc(), Student.first_name).all()
+        
+        if event_data:
+            # Create table data
+            data = [['Date', 'Student', 'Objective', 'Count', 'Prompt Level']]
+            for row in event_data:
+                obj_text = row.objective[:50] + '...' if len(row.objective) > 50 else row.objective
+                data.append([
+                    str(row.date),
+                    row.student,
+                    obj_text,
+                    str(row.count),
+                    row.prompt_level or 'Not Recorded'
+                ])
+            
+            # Create table
+            table = Table(data)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+            ]))
+            
+            story.append(Paragraph("Report Data", heading_style))
+            story.append(table)
+        else:
+            story.append(Paragraph("No data found for the specified criteria.", styles['Normal']))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Create response
+        buffer.seek(0)
+        response = make_response(buffer.getvalue())
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename="therapy_report_{report_type}_{start_date or "all"}.pdf"'
+        
+        return response
+        
+    except Exception as e:
+        logging.error(f"PDF generation error: {str(e)}")
+        return f"Error generating PDF: {str(e)}", 500
 
 @app.route('/app/report.csv')
 def report_csv():

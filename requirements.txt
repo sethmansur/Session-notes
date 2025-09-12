@@ -17,3 +17,5 @@ cryptography
 PyJWT
 openpyxl
 pandas
+reportlab
+weasyprint

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -64,6 +64,9 @@
                 <option value="student_dashboard" {% if report_type == 'student_dashboard' %}selected{% endif %}>
                     📏 Student Dashboard (sessions & totals)
                 </option>
+                <option value="comprehensive_dashboard" {% if report_type == 'comprehensive_dashboard' %}selected{% endif %}>
+                    🎯 Comprehensive Dashboard (Zoho-style)
+                </option>
             </select>
         </div>
         
@@ -86,6 +89,7 @@
             {% elif report_type == 'therapist_notes' %}Therapist Notes View
             {% elif report_type == 'data_grid' %}Quick Data Grid
             {% elif report_type == 'student_dashboard' %}Student Dashboard
+            {% elif report_type == 'comprehensive_dashboard' %}Comprehensive Dashboard
             {% else %}Detailed Report{% endif %}
             {% if report_data %}({{ report_data|length }} records){% endif %}
         </h3>
@@ -98,6 +102,10 @@
             <a href="{{ url_for('report_csv', start_date=start_date, end_date=end_date, student_id=student_id, type=report_type) }}" 
                class="btn btn-secondary btn-small">
                 📄 Download CSV
+            </a>
+            <a href="{{ url_for('report_pdf', start_date=start_date, end_date=end_date, student_id=student_id, type=report_type) }}" 
+               class="btn btn-secondary btn-small">
+                📑 Download PDF
             </a>
             {% endif %}
             {% if report_type in ['chart', 'pie'] %}
@@ -124,6 +132,7 @@
                         <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Student</th>
                         <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Objective</th>
                         <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Count</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Prompt Level</th>
                         <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Notes</th>
                     {% endif %}
                 </tr>
@@ -142,6 +151,16 @@
                         <td style="padding: 12px; border: 1px solid #ddd;">{{ row.student }}</td>
                         <td style="padding: 12px; border: 1px solid #ddd;">{{ row.objective }}</td>
                         <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{{ row.count }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; background: #f8f9fa;">
+                            <span class="prompt-level" style="padding: 2px 6px; border-radius: 12px; font-size: 0.85em; font-weight: 500; background: 
+                            {%- if row.prompt_level and 'Independent' in row.prompt_level -%}#d4edda; color: #155724;
+                            {%- elif row.prompt_level and ('Max' in row.prompt_level or 'Physical' in row.prompt_level) -%}#f8d7da; color: #721c24;
+                            {%- elif row.prompt_level and 'Min' in row.prompt_level -%}#fff3cd; color: #856404;
+                            {%- else -%}#e2e3e5; color: #495057;
+                            {%- endif -%}">
+                                {{ row.prompt_level if row.prompt_level else 'Not Recorded' }}
+                            </span>
+                        </td>
                         <td style="padding: 12px; border: 1px solid #ddd;">{{ row.notes or '' }}</td>
                     {% endif %}
                 </tr>
@@ -158,6 +177,135 @@
         <div style="width: 400px; height: 400px;">
             <canvas id="pieChart"></canvas>
         </div>
+    </div>
+    
+    {% elif report_type == 'comprehensive_dashboard' %}
+    <!-- Comprehensive Zoho-style Dashboard -->
+    <div style="margin-bottom: 2rem;">
+        {% if chart_data and chart_data.type == 'individual' %}
+        <!-- Individual Student Dashboard -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+            <!-- Overview Cards -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 12px; text-align: center;">
+                <h3 style="margin: 0; font-size: 1.1rem;">🎯 Total Attempts</h3>
+                <div style="font-size: 2.5rem; font-weight: bold; margin: 0.5rem 0;">{{ chart_data.total_attempts }}</div>
+                <p style="margin: 0; opacity: 0.9;">Across all objectives</p>
+            </div>
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 1.5rem; border-radius: 12px; text-align: center;">
+                <h3 style="margin: 0; font-size: 1.1rem;">📅 Sessions</h3>
+                <div style="font-size: 2.5rem; font-weight: bold; margin: 0.5rem 0;">{{ chart_data.total_sessions }}</div>
+                <p style="margin: 0; opacity: 0.9;">In date range</p>
+            </div>
+            <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 1.5rem; border-radius: 12px; text-align: center;">
+                <h3 style="margin: 0; font-size: 1.1rem;">🎯 Active Goals</h3>
+                <div style="font-size: 2.5rem; font-weight: bold; margin: 0.5rem 0;">{{ chart_data.active_objectives }}</div>
+                <p style="margin: 0; opacity: 0.9;">Being worked on</p>
+            </div>
+        </div>
+        
+        <!-- Prompt Level Distribution -->
+        {% if chart_data.prompt_levels %}
+        <div style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem;">
+            <h4 style="margin: 0 0 1rem 0; color: #495057;">🌪️ Prompt Level Distribution</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
+                {% for level, count in chart_data.prompt_levels.items() %}
+                <div style="background: 
+                {%- if 'Independent' in level -%}#d4edda; color: #155724;
+                {%- elif 'Max' in level or 'Physical' in level -%}#f8d7da; color: #721c24;
+                {%- elif 'Min' in level -%}#fff3cd; color: #856404;
+                {%- else -%}#e2e3e5; color: #495057;
+                {%- endif -%}
+                padding: 0.5rem 1rem; border-radius: 20px; text-align: center; min-width: 120px;">
+                    <div style="font-weight: bold; font-size: 1.2rem;">{{ count }}</div>
+                    <div style="font-size: 0.85rem;">{{ level }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Objectives Progress -->
+        {% if chart_data.objectives_progress %}
+        <div style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem;">
+            <h4 style="margin: 0 0 1rem 0; color: #495057;">📈 Objective Performance</h4>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa;">
+                            <th style="padding: 12px; border: 1px solid #dee2e6; text-align: left;">Objective</th>
+                            <th style="padding: 12px; border: 1px solid #dee2e6; text-align: center;">Total Attempts</th>
+                            <th style="padding: 12px; border: 1px solid #dee2e6; text-align: center;">Sessions</th>
+                            <th style="padding: 12px; border: 1px solid #dee2e6; text-align: center;">Latest Prompt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for obj, data in chart_data.objectives_progress.items() %}
+                        <tr>
+                            <td style="padding: 12px; border: 1px solid #dee2e6;">{{ obj }}</td>
+                            <td style="padding: 12px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{{ data.total }}</td>
+                            <td style="padding: 12px; border: 1px solid #dee2e6; text-align: center;">{{ data.session_count }}</td>
+                            <td style="padding: 12px; border: 1px solid #dee2e6; text-align: center;">
+                                <span style="padding: 2px 8px; border-radius: 12px; font-size: 0.85em; background: 
+                                {%- if 'Independent' in data.latest_prompt -%}#d4edda; color: #155724;
+                                {%- elif 'Max' in data.latest_prompt or 'Physical' in data.latest_prompt -%}#f8d7da; color: #721c24;
+                                {%- elif 'Min' in data.latest_prompt -%}#fff3cd; color: #856404;
+                                {%- else -%}#e2e3e5; color: #495057;
+                                {%- endif -%}">
+                                    {{ data.latest_prompt }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% elif chart_data and chart_data.type == 'overview' %}
+        <!-- Organization Overview Dashboard -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 12px; text-align: center;">
+                <h3 style="margin: 0; font-size: 1.1rem;">👥 Students</h3>
+                <div style="font-size: 2.5rem; font-weight: bold; margin: 0.5rem 0;">{{ chart_data.total_students }}</div>
+                <p style="margin: 0; opacity: 0.9;">Active students</p>
+            </div>
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 1.5rem; border-radius: 12px; text-align: center;">
+                <h3 style="margin: 0; font-size: 1.1rem;">🎯 Attempts</h3>
+                <div style="font-size: 2.5rem; font-weight: bold; margin: 0.5rem 0;">{{ chart_data.total_attempts }}</div>
+                <p style="margin: 0; opacity: 0.9;">Total attempts</p>
+            </div>
+            <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 1.5rem; border-radius: 12px; text-align: center;">
+                <h3 style="margin: 0; font-size: 1.1rem;">📅 Sessions</h3>
+                <div style="font-size: 2.5rem; font-weight: bold; margin: 0.5rem 0;">{{ chart_data.total_sessions }}</div>
+                <p style="margin: 0; opacity: 0.9;">Total sessions</p>
+            </div>
+        </div>
+        
+        <!-- Student Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+            {% for student in chart_data.student_summaries %}
+            <div style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 1.5rem; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #007bff, #28a745);"></div>
+                <h4 style="margin: 0 0 1rem 0; color: #495057;">{{ student.name }}</h4>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center;">
+                    <div>
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #007bff;">{{ student.total_attempts }}</div>
+                        <div style="font-size: 0.85rem; color: #6c757d;">Attempts</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #28a745;">{{ student.sessions }}</div>
+                        <div style="font-size: 0.85rem; color: #6c757d;">Sessions</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #ffc107;">{{ student.objectives }}</div>
+                        <div style="font-size: 0.85rem; color: #6c757d;">Goals</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
     
     {% elif report_type == 'student_progress' %}
@@ -437,6 +585,11 @@
     
     {% if report_type == 'chart' and chart_data %}
     document.addEventListener('DOMContentLoaded', function() {
+        // Ensure Chart.js is loaded before using it
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js not loaded');
+            return;
+        }
         const ctx = document.getElementById('progressChart').getContext('2d');
         currentChart = new Chart(ctx, {
             type: 'line',
@@ -490,6 +643,11 @@
     });
     {% elif report_type == 'pie' and chart_data %}
     document.addEventListener('DOMContentLoaded', function() {
+        // Ensure Chart.js is loaded before using it
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js not loaded');
+            return;
+        }
         const ctx = document.getElementById('pieChart').getContext('2d');
         currentChart = new Chart(ctx, {
             type: 'pie',
