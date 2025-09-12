@@ -3514,8 +3514,8 @@ def analyze_data_collection_sheet(sheet):
     return structure
 
 if __name__ == '__main__':
-    # Get port from environment variable (for production) or default to 5000 (for development)
-    port = int(os.environ.get('PORT', 5000))
+    # Get port from environment variable (for production) or default to 8080 (for development)
+    port = int(os.environ.get('PORT', 8080))
     
     # Set debug mode based on environment
     debug_mode = os.environ.get("REPLIT_DEPLOYMENT") != "1"
