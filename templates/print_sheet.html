@@ -32,8 +32,8 @@
 
         .page {
             width: 7.5in; /* 8.5" - 1" margins */
-            min-height: 10in; /* 11" - 1" margins */
-            /* Removed page breaks to fit everything on one page */
+            height: auto; /* Let content determine height */
+            /* Removed page breaks and min-height to prevent blank pages */
         }
 
         /* Header Section */
@@ -82,7 +82,7 @@
             grid-template-columns: 1fr 1fr;
             grid-template-rows: 1fr 1fr;
             gap: 0.08in;
-            max-height: 8.5in;
+            height: auto;
         }
 
         /* Individual Student Panel - Optimized */
