@@ -28,8 +28,10 @@ else:
     # Development environment
     app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
 
-# Configure server name only for production deployment to avoid localhost mismatch
+# Configure server name only when absolutely needed for OAuth
+# This allows localhost testing while fixing OAuth redirect URI issues
 if os.environ.get('REPLIT_DEPLOYMENT') == '1':
+    # In production, use the proper domain
     if os.environ.get('REPLIT_DOMAINS'):
         app.config['SERVER_NAME'] = os.environ['REPLIT_DOMAINS'].split(',')[0]
 
