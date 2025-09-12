@@ -9,6 +9,7 @@
         @page {
             size: letter portrait;
             margin: 0.25in;
+            page-break-after: always;
         }
 
         @media print {
@@ -35,13 +36,18 @@
             height: 10.5in; /* Fixed height for reliable one-page fit */
             display: grid;
             grid-template-rows: auto 1fr; /* Header + students grid */
+            page-break-after: always;
+        }
+        
+        .page:last-child {
+            page-break-after: auto;
         }
 
         /* Header Section - Compact */
         .header {
             border-bottom: 2px solid #000;
-            padding-bottom: 0.15in;
-            margin-bottom: 0.15in;
+            padding-bottom: 0.1in;
+            margin-bottom: 0.1in;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -77,19 +83,34 @@
             font-size: 11px;
         }
 
-        /* Student Grid - 1x4 layout for 4 students */
+        /* Student Grid - Flexible layout up to 4 students */
         .students-grid {
             display: grid;
             grid-template-columns: 1fr;
-            grid-template-rows: repeat(4, 1fr);
-            gap: 0.05in;
+            gap: 0.03in;
             height: 100%; /* Use all available space */
+        }
+        
+        .students-grid.one-student {
+            grid-template-rows: 1fr;
+        }
+        
+        .students-grid.two-students {
+            grid-template-rows: 1fr 1fr;
+        }
+        
+        .students-grid.three-students {
+            grid-template-rows: 1fr 1fr 1fr;
+        }
+        
+        .students-grid.four-students {
+            grid-template-rows: repeat(4, 1fr);
         }
 
         /* Individual Student Panel - Constrained for fit */
         .student-panel {
             border: 2px solid #000;
-            padding: 0.05in;
+            padding: 0.04in;
             break-inside: avoid;
             font-size: 8px;
             height: 100%;
@@ -111,7 +132,7 @@
         .objectives-list {
             display: flex;
             flex-direction: column;
-            gap: 0.04in;
+            gap: 0.02in;
             overflow: hidden; /* Prevent overflow beyond panel */
         }
 
@@ -119,9 +140,9 @@
             display: flex;
             align-items: stretch; /* Allow boxes to use full height */
             border-bottom: 1px solid #ddd;
-            padding-bottom: 0.02in;
-            margin-bottom: 0.02in;
-            min-height: 0.45in;
+            padding-bottom: 0.01in;
+            margin-bottom: 0.01in;
+            min-height: 0.4in;
             flex: 1;
         }
 
@@ -197,10 +218,21 @@
             background: #0056b3;
         }
 
-        /* Ensure 1x4 grid layout for print */
+        /* Ensure flexible grid layout for print */
         @media print {
             .students-grid {
                 grid-template-columns: 1fr;
+            }
+            .students-grid.one-student {
+                grid-template-rows: 1fr;
+            }
+            .students-grid.two-students {
+                grid-template-rows: 1fr 1fr;
+            }
+            .students-grid.three-students {
+                grid-template-rows: 1fr 1fr 1fr;
+            }
+            .students-grid.four-students {
                 grid-template-rows: repeat(4, 1fr);
             }
         }
@@ -213,18 +245,19 @@
         <button class="btn" onclick="window.close()">✖️ Close</button>
     </div>
 
+    {% for page_students in pages %}
     <div class="page">
         <!-- Header -->
         <div class="header">
             <div>
-                <h1>Speech Therapy Data Collection</h1>
+                <h1 contenteditable="true" style="cursor: text; background: #fffacd; padding: 2px;">{{ therapy_type }}</h1>
                 <div class="header-fields">
                     <div class="header-field">
                         <label>Date:</label>
                         <input type="text" value="{{ session_date }}" readonly>
                     </div>
                     <div class="header-field">
-                        <label>Therapist:</label>
+                        <label>Clinician:</label>
                         <input type="text" value="{{ therapist_name }}">
                     </div>
                     <div class="header-field">
@@ -234,14 +267,14 @@
                 </div>
             </div>
             <div class="header-info">
-                <div><strong>{{ organization_name }}</strong></div>
-                <div>All Students - Single Page</div>
+                <div><strong contenteditable="true" style="cursor: text; background: #fffacd; padding: 2px;">{{ organization_name }}</strong></div>
+                <div contenteditable="true" style="cursor: text; background: #fffacd; padding: 2px;">{{ page_subtitle }} - Page {{ loop.index }}</div>
             </div>
         </div>
 
         <!-- Students Grid -->
-        <div class="students-grid">
-            {% for student in pages[0] %}
+        <div class="students-grid {% if page_students|length == 1 %}one-student{% elif page_students|length == 2 %}two-students{% elif page_students|length == 3 %}three-students{% else %}four-students{% endif %}">
+            {% for student in page_students %}
             <div class="student-panel">
                 <div class="student-name">{{ student.first_name }}</div>
                 
@@ -269,6 +302,7 @@
             {% endfor %}
         </div>
     </div>
+    {% endfor %}
 
     <!-- Auto-print on load (optional) -->
     <script>
