@@ -187,6 +187,14 @@
         </div>
         {% endif %}
         
+        <!-- Logout Section -->
+        <div style="margin-top: 1.5rem; padding: 1rem; border-top: 1px solid #dee2e6; text-align: center;">
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-danger" 
+               style="padding: 12px 24px; font-size: 16px;"
+               onclick="return confirm('Are you sure you want to logout?')">
+                🚪 Logout
+            </a>
+        </div>
     </div>
 </div>
 {% endblock %}

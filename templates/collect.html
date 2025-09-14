@@ -353,9 +353,9 @@
                                            title="Correct responses (+)" style="width: 45px;">
                                 </div>
                                 <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
-                                    <button class="pt-btn" onclick="incrementPartialCount(${selectedStudent.id}, ${objective.id}, this)" title="Partial Credit">+pt</button>
+                                    <button class="pt-btn" onclick="incrementPartialCount(${selectedStudent.id}, ${objective.id}, this)" title="Positive with prompt help">+pt</button>
                                     <input type="number" class="count-input" id="count2-${selectedStudent.id}-${objective.id}" value="0" min="0" readonly
-                                           title="Partial credit (+pt)" style="width: 45px;">
+                                           title="Positive with prompt help (+pt)" style="width: 45px;">
                                 </div>
                                 <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
                                     <button class="x-btn" onclick="incrementXCount(${selectedStudent.id}, ${objective.id}, this)" title="Incorrect/Error Response">X</button>
