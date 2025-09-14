@@ -117,8 +117,13 @@ def login():
             if next_page:
                 return redirect(next_page)
             return redirect(url_for('app_dashboard'))
-        else:
+        elif user:
+            # User exists but wrong password
             flash('Invalid email or password.', 'error')
+        else:
+            # User doesn't exist - suggest creating account
+            flash('No account found with this email. Would you like to create an account?', 'info')
+            return redirect(url_for('auth.register', email=email))
     
     return render_template('auth/login.html')
 

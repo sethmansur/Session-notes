@@ -140,11 +140,12 @@
     {% endwith %}
     
     <form method="POST" action="{{ url_for('auth.register') }}">
+        {{ csrf_token() }}
         
         <div class="form-group">
             <label for="email">Email Address *</label>
             <input type="email" id="email" name="email" class="form-control" 
-                   value="{{ request.form.email or '' }}" required autofocus>
+                   value="{{ request.form.email or request.args.get('email', '') }}" required autofocus>
         </div>
         
         <div class="form-row">
