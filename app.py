@@ -2239,6 +2239,97 @@ def report():
                 }
             }
             
+        elif report_type == 'session_analytics':
+            # Session Analytics: Track +/+pt/additional counts with percentages and prompt levels
+            analytics_query = db.session.query(
+                Session.date,
+                Student.first_name.label('student_name'),
+                Student.id.label('student_id'),
+                func.sum(Event.count).label('main_count'),  # + button interactions
+                func.sum(Event.count2).label('count2_total'),  # Additional count box 1
+                func.sum(Event.count3).label('count3_total'),  # Additional count box 2
+                func.count(Event.id).label('event_instances'),  # Total objective instances
+                Event.prompt_level.label('session_prompt')  # Session-wide prompt level
+            ).select_from(Event)\
+             .join(Session, Event.session_id == Session.id)\
+             .join(Student, Event.student_id == Student.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            # Apply date filters
+            if start_date and end_date:
+                analytics_query = analytics_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            elif start_date:
+                analytics_query = analytics_query.filter(Session.date >= start_date)
+            elif end_date:
+                analytics_query = analytics_query.filter(Session.date <= end_date)
+            
+            # Apply student filter
+            if student_id:
+                analytics_query = analytics_query.filter(Student.id == student_id)
+            
+            # Group by session, student, and prompt level
+            analytics_data = analytics_query.group_by(
+                Session.date, Student.id, Student.first_name, Event.prompt_level
+            ).order_by(Session.date.desc(), Student.first_name).all()
+            
+            # Process the data for display
+            session_analytics = []
+            for row in analytics_data:
+                # Handle null values
+                main_count = float(row.main_count or 0)
+                count2_total = float(row.count2_total or 0) 
+                count3_total = float(row.count3_total or 0)
+                event_instances = int(row.event_instances or 0)
+                
+                # Calculate combined total (+ and +pt interpretation)
+                combined_total = main_count + count2_total
+                
+                # Calculate grand total of all counts
+                grand_total = main_count + count2_total + count3_total
+                
+                # Calculate fractions and percentages (avoid division by zero)
+                if grand_total > 0:
+                    main_fraction = main_count / grand_total
+                    count2_fraction = count2_total / grand_total
+                    count3_fraction = count3_total / grand_total
+                    combined_fraction = combined_total / grand_total
+                    
+                    main_percentage = round(main_fraction * 100, 1)
+                    count2_percentage = round(count2_fraction * 100, 1)
+                    count3_percentage = round(count3_fraction * 100, 1)
+                    combined_percentage = round(combined_fraction * 100, 1)
+                else:
+                    main_fraction = count2_fraction = count3_fraction = combined_fraction = 0
+                    main_percentage = count2_percentage = count3_percentage = combined_percentage = 0
+                
+                session_analytics.append({
+                    'date': row.date.isoformat(),
+                    'student_name': row.student_name,
+                    'session_prompt': row.session_prompt or 'Not Set',
+                    'main_count': main_count,
+                    'count2_total': count2_total,
+                    'count3_total': count3_total,
+                    'combined_total': combined_total,
+                    'grand_total': grand_total,
+                    'event_instances': event_instances,
+                    'main_fraction': f"{main_count:.1f}/{grand_total:.1f}",
+                    'count2_fraction': f"{count2_total:.1f}/{grand_total:.1f}",
+                    'count3_fraction': f"{count3_total:.1f}/{grand_total:.1f}",
+                    'combined_fraction': f"{combined_total:.1f}/{grand_total:.1f}",
+                    'main_percentage': main_percentage,
+                    'count2_percentage': count2_percentage,
+                    'count3_percentage': count3_percentage,
+                    'combined_percentage': combined_percentage
+                })
+            
+            chart_data = {
+                'type': 'session_analytics',
+                'analytics': session_analytics,
+                'total_sessions': len(set((row['date'], row['student_name']) for row in session_analytics))
+            }
+            
         elif report_type == 'comprehensive_dashboard':
             # Zoho-style comprehensive dashboard with advanced analytics
             dashboard_data = {}
