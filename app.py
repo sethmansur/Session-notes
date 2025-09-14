@@ -148,6 +148,63 @@ def app_dashboard():
     """Authenticated app dashboard - redirects to collect page."""
     return redirect(url_for('collect'))
 
+@app.route('/app/profile', methods=['GET', 'POST'])
+@require_subscription
+def user_profile():
+    """User profile management page with HIPAA compliance reminder."""
+    from forms import ProfileForm, ChangePasswordForm
+    
+    profile_form = ProfileForm(current_user.id)
+    password_form = ChangePasswordForm()
+    
+    if request.method == 'POST':
+        form_type = request.form.get('form_type')
+        
+        if form_type == 'profile' and profile_form.validate_on_submit():
+            # Update profile information
+            current_user.first_name = profile_form.first_name.data
+            current_user.last_name = profile_form.last_name.data
+            current_user.email = profile_form.email.data.lower().strip()
+            current_user.updated_at = datetime.now()
+            
+            try:
+                db.session.commit()
+                flash('Profile updated successfully!', 'success')
+                return redirect(url_for('user_profile'))
+            except Exception as e:
+                db.session.rollback()
+                flash('Failed to update profile. Please try again.', 'error')
+                current_app.logger.error(f"Profile update error: {str(e)}")
+        
+        elif form_type == 'password' and password_form.validate_on_submit():
+            # Verify current password
+            if not current_user.check_password(password_form.current_password.data):
+                flash('Current password is incorrect.', 'error')
+            else:
+                # Update password
+                current_user.set_password(password_form.new_password.data)
+                current_user.updated_at = datetime.now()
+                
+                try:
+                    db.session.commit()
+                    flash('Password updated successfully!', 'success')
+                    return redirect(url_for('user_profile'))
+                except Exception as e:
+                    db.session.rollback()
+                    flash('Failed to update password. Please try again.', 'error')
+                    current_app.logger.error(f"Password update error: {str(e)}")
+    
+    # Pre-populate the profile form with current user data
+    if request.method == 'GET':
+        profile_form.first_name.data = current_user.first_name
+        profile_form.last_name.data = current_user.last_name
+        profile_form.email.data = current_user.email
+    
+    return render_template('profile.html', 
+                         profile_form=profile_form, 
+                         password_form=password_form,
+                         user=current_user)
+
 # Pricing calculation helper
 def get_pricing_info(plan_type, billing_period='monthly', user_count=1):
     """Calculate pricing with discounts for different plan types"""

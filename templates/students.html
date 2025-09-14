@@ -6,6 +6,19 @@
     <div class="card">
         <h3>Add Student & Paste Objectives</h3>
         
+        <!-- Bulk Data Management Section -->
+        <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #1565c0;">📊 Bulk Data Management</h4>
+            <p style="margin: 0 0 1rem 0; color: #1976d2; font-size: 0.9rem;">Upload multiple students and objectives at once using our Excel template.</p>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <a href="/download/bulk-upload-template" class="btn btn-secondary" target="_blank">
+                    📥 Download Template
+                </a>
+                <button id="upload-data-btn" class="btn btn-primary" onclick="showUploadModal()">
+                    📤 Upload Data
+                </button>
+            </div>
+        </div>
         
         <div class="form-group">
             <label for="student-name">Student First Name</label>
@@ -111,6 +124,34 @@
                 <p style="text-align: center; color: #666; padding: 2rem;">No students added yet. Add a student to get started!</p>
             {% endif %}
         </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div id="upload-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 12px; width: 90%; max-width: 500px;">
+        <h3 style="margin: 0 0 1rem 0; color: #333;">📤 Upload Student Data</h3>
+        
+        <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem;">
+            <strong>⚠️ HIPAA Compliance Reminder:</strong>
+            <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">Do NOT upload full client names or personally identifiable information. Use first names or initials only to protect client privacy and comply with HIPAA regulations.</p>
+        </div>
+        
+        <form id="upload-form" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="upload-file">Select Excel File (.xlsx only):</label>
+                <input type="file" id="upload-file" accept=".xlsx" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666; display: block; margin-top: 0.5rem;">Maximum file size: 10MB</small>
+            </div>
+            
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="hideUploadModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="upload-submit-btn">
+                    <span id="upload-btn-text">📤 Upload Data</span>
+                    <span id="upload-spinner" style="display: none;">⏳ Uploading...</span>
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 {% endblock %}
@@ -481,6 +522,86 @@
         const printDateInput = document.getElementById('print-date');
         if (printDateInput) {
             printDateInput.value = new Date().toISOString().split('T')[0];
+        }
+    });
+    
+    // Upload modal functions
+    function showUploadModal() {
+        document.getElementById('upload-modal').style.display = 'block';
+    }
+    
+    function hideUploadModal() {
+        document.getElementById('upload-modal').style.display = 'none';
+        // Reset form
+        document.getElementById('upload-form').reset();
+        document.getElementById('upload-btn-text').style.display = 'inline';
+        document.getElementById('upload-spinner').style.display = 'none';
+        document.getElementById('upload-submit-btn').disabled = false;
+    }
+    
+    // Handle file upload form submission
+    document.getElementById('upload-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('upload-file');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            showMessage('Please select a file to upload', 'error');
+            return;
+        }
+        
+        // Validate file type
+        if (!file.name.toLowerCase().endsWith('.xlsx')) {
+            showMessage('Please select an Excel file (.xlsx format only)', 'error');
+            return;
+        }
+        
+        // Validate file size (10MB limit)
+        if (file.size > 10 * 1024 * 1024) {
+            showMessage('File is too large. Please select a file smaller than 10MB', 'error');
+            return;
+        }
+        
+        // Show loading state
+        document.getElementById('upload-btn-text').style.display = 'none';
+        document.getElementById('upload-spinner').style.display = 'inline';
+        document.getElementById('upload-submit-btn').disabled = true;
+        
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const response = await fetch('/app/admin/import_spreadsheet', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage(`Successfully imported ${result.students_created || 0} students and ${result.objectives_created || 0} objectives!`, 'success');
+                hideUploadModal();
+                // Reload page to show imported data
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                showMessage(result.error || 'Upload failed. Please check your file format and try again.', 'error');
+            }
+        } catch (error) {
+            console.error('Upload error:', error);
+            showMessage('Upload failed. Please check your internet connection and try again.', 'error');
+        } finally {
+            // Reset loading state
+            document.getElementById('upload-btn-text').style.display = 'inline';
+            document.getElementById('upload-spinner').style.display = 'none';
+            document.getElementById('upload-submit-btn').disabled = false;
+        }
+    });
+    
+    // Close modal when clicking outside
+    document.getElementById('upload-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            hideUploadModal();
         }
     });
 </script>

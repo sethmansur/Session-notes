@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <h2 style="margin-bottom: 2rem; color: #333;">👤 User Profile Management</h2>
+    
+    <!-- HIPAA Compliance Reminder -->
+    <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-bottom: 2rem;">
+        <h4 style="margin: 0 0 0.5rem 0; color: #856404;">🔒 HIPAA Compliance Reminder</h4>
+        <p style="margin: 0; color: #856404; font-size: 0.9rem;">
+            <strong>Important:</strong> Do NOT include full client names or personally identifiable information in any part of this system. 
+            Use first names, initials, or coded identifiers only to protect client privacy and maintain HIPAA compliance. 
+            Your profile information is secure and only accessible to you.
+        </p>
+    </div>
+    
+    <div class="grid grid-2" style="gap: 2rem;">
+        <!-- Profile Information Section -->
+        <div class="card">
+            <h3 style="margin-bottom: 1.5rem; color: #2c3e50;">📝 Profile Information</h3>
+            
+            <form method="POST">
+                <input type="hidden" name="form_type" value="profile">
+                
+                <div class="form-group">
+                    {{ profile_form.first_name.label(class="form-label") }}
+                    {{ profile_form.first_name(class="form-control", placeholder="Enter your first name") }}
+                    {% if profile_form.first_name.errors %}
+                        <div class="error-message">
+                            {% for error in profile_form.first_name.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    {{ profile_form.last_name.label(class="form-label") }}
+                    {{ profile_form.last_name(class="form-control", placeholder="Enter your last name") }}
+                    {% if profile_form.last_name.errors %}
+                        <div class="error-message">
+                            {% for error in profile_form.last_name.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    {{ profile_form.email.label(class="form-label") }}
+                    {{ profile_form.email(class="form-control", placeholder="Enter your email address") }}
+                    {% if profile_form.email.errors %}
+                        <div class="error-message">
+                            {% for error in profile_form.email.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <small style="color: #666; font-size: 0.85rem; display: block; margin-top: 0.25rem;">
+                        This email is used for login and account recovery.
+                    </small>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">
+                    💾 Update Profile
+                </button>
+            </form>
+        </div>
+        
+        <!-- Password Update Section -->
+        <div class="card">
+            <h3 style="margin-bottom: 1.5rem; color: #2c3e50;">🔐 Change Password</h3>
+            
+            <form method="POST">
+                <input type="hidden" name="form_type" value="password">
+                
+                <div class="form-group">
+                    {{ password_form.current_password.label(class="form-label") }}
+                    {{ password_form.current_password(class="form-control", placeholder="Enter your current password") }}
+                    {% if password_form.current_password.errors %}
+                        <div class="error-message">
+                            {% for error in password_form.current_password.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    {{ password_form.new_password.label(class="form-label") }}
+                    {{ password_form.new_password(class="form-control", placeholder="Enter your new password") }}
+                    {% if password_form.new_password.errors %}
+                        <div class="error-message">
+                            {% for error in password_form.new_password.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <small style="color: #666; font-size: 0.85rem; display: block; margin-top: 0.25rem;">
+                        Password must be at least 8 characters long.
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    {{ password_form.confirm_password.label(class="form-label") }}
+                    {{ password_form.confirm_password(class="form-control", placeholder="Confirm your new password") }}
+                    {% if password_form.confirm_password.errors %}
+                        <div class="error-message">
+                            {% for error in password_form.confirm_password.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <button type="submit" class="btn btn-primary">
+                    🔒 Update Password
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Account Information Section -->
+    <div class="card" style="margin-top: 2rem;">
+        <h3 style="margin-bottom: 1.5rem; color: #2c3e50;">📊 Account Information</h3>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div style="padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+                <strong style="color: #495057;">Account Status:</strong>
+                <div style="margin-top: 0.5rem;">
+                    {% if user.subscription_status == 'trial' %}
+                        <span style="background: #ffc107; color: #212529; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem;">
+                            🚀 Trial ({{ user.days_left_in_trial() }} days left)
+                        </span>
+                    {% elif user.subscription_status == 'active' %}
+                        <span style="background: #28a745; color: white; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem;">
+                            ✅ Active Subscription
+                        </span>
+                    {% else %}
+                        <span style="background: #6c757d; color: white; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem;">
+                            {{ user.subscription_status|title }}
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div style="padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+                <strong style="color: #495057;">Plan Type:</strong>
+                <div style="margin-top: 0.5rem; text-transform: capitalize;">
+                    {{ user.plan_type or 'Freemium' }}
+                </div>
+            </div>
+            
+            <div style="padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+                <strong style="color: #495057;">Member Since:</strong>
+                <div style="margin-top: 0.5rem;">
+                    {{ user.created_at.strftime('%B %d, %Y') if user.created_at else 'N/A' }}
+                </div>
+            </div>
+            
+            <div style="padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+                <strong style="color: #495057;">Last Updated:</strong>
+                <div style="margin-top: 0.5rem;">
+                    {{ user.updated_at.strftime('%B %d, %Y') if user.updated_at else 'Never' }}
+                </div>
+            </div>
+        </div>
+        
+        {% if user.subscription_status == 'trial' or user.plan_type == 'freemium' %}
+        <div style="margin-top: 1.5rem; padding: 1rem; background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #1565c0;">💎 Upgrade Your Account</h4>
+            <p style="margin: 0 0 1rem 0; color: #1976d2; font-size: 0.9rem;">
+                Get access to advanced features, unlimited students, and priority support.
+            </p>
+            <a href="/app/upgrade" class="btn btn-primary">
+                🚀 View Plans & Upgrade
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Auto-focus first input field
+    document.addEventListener('DOMContentLoaded', function() {
+        const firstInput = document.querySelector('.form-control');
+        if (firstInput) {
+            firstInput.focus();
+        }
+    });
+</script>
+{% endblock %}
