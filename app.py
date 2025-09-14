@@ -2,7 +2,7 @@
 import os
 import re
 from datetime import datetime, date, timedelta
-from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file, session, make_response
+from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file, session, make_response, flash, current_app
 from flask_login import current_user
 import csv
 import io
@@ -157,6 +157,10 @@ def user_profile():
     profile_form = ProfileForm(current_user.id)
     password_form = ChangePasswordForm()
     
+    # Get current user's organization
+    membership = Membership.query.filter_by(user_id=current_user.id).first()
+    current_organization = membership.organization if membership else None
+    
     if request.method == 'POST':
         form_type = request.form.get('form_type')
         
@@ -166,6 +170,40 @@ def user_profile():
             current_user.last_name = profile_form.last_name.data
             current_user.email = profile_form.email.data.lower().strip()
             current_user.updated_at = datetime.now()
+            
+            # Update organization name if user has an organization
+            if current_organization and profile_form.organization_name.data:
+                current_organization.name = profile_form.organization_name.data.strip()
+            elif not current_organization and profile_form.organization_name.data:
+                # Create new organization if none exists
+                org_name = profile_form.organization_name.data.strip()
+                
+                # Generate a unique subdomain from the organization name
+                base_subdomain = re.sub(r'[^a-zA-Z0-9]', '', org_name.lower())[:20]
+                if not base_subdomain:
+                    base_subdomain = f"org{current_user.id}"
+                
+                # Ensure subdomain is unique
+                subdomain = base_subdomain
+                counter = 1
+                while Organization.query.filter_by(subdomain=subdomain).first():
+                    subdomain = f"{base_subdomain}{counter}"
+                    counter += 1
+                
+                new_organization = Organization(
+                    name=org_name,
+                    subdomain=subdomain
+                )
+                db.session.add(new_organization)
+                db.session.flush()  # Get the ID
+                
+                # Create membership for the user
+                new_membership = Membership(
+                    user_id=current_user.id,
+                    organization_id=new_organization.id,
+                    role='owner'
+                )
+                db.session.add(new_membership)
             
             try:
                 db.session.commit()
@@ -199,11 +237,13 @@ def user_profile():
         profile_form.first_name.data = current_user.first_name
         profile_form.last_name.data = current_user.last_name
         profile_form.email.data = current_user.email
+        profile_form.organization_name.data = current_organization.name if current_organization else ''
     
     return render_template('profile.html', 
                          profile_form=profile_form, 
                          password_form=password_form,
-                         user=current_user)
+                         user=current_user,
+                         current_organization=current_organization)
 
 # Pricing calculation helper
 def get_pricing_info(plan_type, billing_period='monthly', user_count=1):

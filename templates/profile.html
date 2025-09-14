@@ -12,14 +12,23 @@
         </a>
     </div>
     
-    <!-- HIPAA Compliance Reminder -->
+    <!-- HIPAA Compliance and Data Protection -->
     <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-bottom: 2rem;">
-        <h4 style="margin: 0 0 0.5rem 0; color: #856404;">🔒 HIPAA Compliance Reminder</h4>
-        <p style="margin: 0; color: #856404; font-size: 0.9rem;">
+        <h4 style="margin: 0 0 0.5rem 0; color: #856404;">🔒 HIPAA Compliance & Privacy Guidelines</h4>
+        <p style="margin: 0 0 0.75rem 0; color: #856404; font-size: 0.9rem;">
             <strong>Important:</strong> Do NOT include full client names or personally identifiable information in any part of this system. 
-            Use first names, initials, or coded identifiers only to protect client privacy and maintain HIPAA compliance. 
-            Your profile information is secure and only accessible to you.
+            Use first names, initials, or coded identifiers only to protect client privacy and maintain HIPAA compliance.
         </p>
+        <div style="background: rgba(255,255,255,0.3); padding: 0.75rem; border-radius: 6px; margin-top: 0.75rem;">
+            <h5 style="margin: 0 0 0.5rem 0; color: #856404; font-size: 0.9rem;">⚠️ Privacy Responsibility</h5>
+            <ul style="margin: 0; padding-left: 1.25rem; color: #856404; font-size: 0.85rem; line-height: 1.4;">
+                <li><strong>User Responsibility:</strong> You are responsible for ensuring HIPAA compliance in your practice</li>
+                <li><strong>Data Security:</strong> Connections to this service use standard web encryption (HTTPS)</li>
+                <li><strong>No PHI Storage:</strong> Do not enter protected health information or full client names</li>
+                <li><strong>Local Privacy:</strong> Ensure your device and workspace are secure when using this system</li>
+                <li><strong>Data Review:</strong> Regularly review and verify that no sensitive information has been entered</li>
+            </ul>
+        </div>
     </div>
     
     <div class="grid grid-2" style="gap: 2rem;">
@@ -66,6 +75,21 @@
                     {% endif %}
                     <small style="color: #666; font-size: 0.85rem; display: block; margin-top: 0.25rem;">
                         This email is used for login and account recovery.
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    {{ profile_form.organization_name.label(class="form-label") }}
+                    {{ profile_form.organization_name(class="form-control", placeholder="Enter your clinic or organization name") }}
+                    {% if profile_form.organization_name.errors %}
+                        <div class="error-message">
+                            {% for error in profile_form.organization_name.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <small style="color: #666; font-size: 0.85rem; display: block; margin-top: 0.25rem;">
+                        This will appear on your printed data collection sheets.
                     </small>
                 </div>
                 

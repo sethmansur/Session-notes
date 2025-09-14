@@ -112,6 +112,10 @@ class ProfileForm(FlaskForm):
         Length(min=5, max=120, message='Email must be between 5 and 120 characters.')
     ])
     
+    organization_name = StringField('Organization Name', validators=[
+        Length(max=100, message='Organization name must be less than 100 characters.')
+    ])
+    
     submit = SubmitField('Update Profile')
     
     def __init__(self, current_user_id, *args, **kwargs):
