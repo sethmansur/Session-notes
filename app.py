@@ -109,13 +109,37 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
 # Initialize database
 db.init_app(app)
 
-# Create tables
-with app.app_context():
-    db.create_all()
-    # Initialize default settings
-    from models import Settings
-    Settings.initialize_default_settings()
-    logging.info("Database tables created")
+# Database initialization flag to avoid multiple initializations
+_db_initialized = False
+
+def init_database():
+    """Initialize database tables and settings on first access."""
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            with app.app_context():
+                db.create_all()
+                # Initialize default settings
+                from models import Settings
+                Settings.initialize_default_settings()
+                logging.info("Database tables created and initialized")
+                _db_initialized = True
+        except Exception as e:
+            logging.error(f"Database initialization failed: {str(e)}")
+            # Don't block startup, let the app start and handle DB errors in routes
+            pass
+
+# Initialize database on first request using before_request
+# (before_first_request is deprecated in newer Flask versions)
+@app.before_request
+def initialize_database_on_first_request():
+    """Initialize database on first request to avoid blocking startup."""
+    # Skip database initialization for health/readiness probes and static files
+    if request.path in {'/ready', '/health'} or request.endpoint == 'static':
+        return
+    
+    if not _db_initialized:
+        init_database()
 
 # Database tables are managed by SQLAlchemy models in models.py
 # Authentication decorators are now imported from auth.py module
@@ -1578,6 +1602,12 @@ def health_check():
     except Exception as e:
         app.logger.error(f"Health check failed: {str(e)}")
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
+
+@app.route('/ready')
+def readiness_check():
+    """Lightweight readiness check for deployment probes."""
+    # Basic app readiness without database dependency
+    return jsonify({'status': 'ready', 'service': 'speech-therapy-app'}), 200
 
 # ===== DIRECT ACCESS ROUTES (No authentication required) =====
 # These routes provide bypass access for trusted users like Sam

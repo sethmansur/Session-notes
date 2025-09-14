@@ -1,1 +1,1 @@
-web: gunicorn app:app -k gthread --threads 8 --workers 1 --timeout 120 --bind 0.0.0.0:5000 --reuse-port
+web: gunicorn app:app -k gthread --threads 8 --workers 1 --timeout 60 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --preload --bind 0.0.0.0:$PORT
