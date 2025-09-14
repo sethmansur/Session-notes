@@ -47,17 +47,19 @@ class User(UserMixin, db.Model):
     memberships = db.relationship('Membership', back_populates='user', cascade='all, delete-orphan')
     
     def is_trial_active(self):
-        """Check if user's 7-day trial is still active"""
+        """Check if user's trial is still active"""
         if self.subscription_status != 'trial' or not self.trial_start_date:
             return False
-        trial_end = self.trial_start_date + timedelta(days=7)
+        trial_days = Settings.get_setting('trial_days', 7)
+        trial_end = self.trial_start_date + timedelta(days=trial_days)
         return datetime.now() < trial_end
     
     def days_left_in_trial(self):
         """Calculate days remaining in trial"""
         if self.subscription_status != 'trial' or not self.trial_start_date:
             return 0
-        trial_end = self.trial_start_date + timedelta(days=7)
+        trial_days = Settings.get_setting('trial_days', 7)
+        trial_end = self.trial_start_date + timedelta(days=trial_days)
         remaining = trial_end - datetime.now()
         return max(0, remaining.days)
     
@@ -71,23 +73,32 @@ class User(UserMixin, db.Model):
     
     def get_student_limit(self):
         """Get maximum number of students allowed for user's plan"""
-        # Active subscription users have no limit
+        # Active subscription users
         if self.subscription_status == 'active':
-            return None  # No limit for paid plans
+            limit = Settings.get_setting('active_student_limit', 'unlimited')
+            return None if limit == 'unlimited' else int(limit)
         
-        # Active trial users have no limit
+        # Active trial users
         if self.is_trial_active():
-            return None  # No limit during trial
+            limit = Settings.get_setting('trial_student_limit', 'unlimited')
+            return None if limit == 'unlimited' else int(limit)
         
-        # After trial expires or for freemium users, limit to 4 students
-        return 4
+        # After trial expires or for freemium users
+        limit = Settings.get_setting('freemium_student_limit', 4)
+        return int(limit)
     
     def get_objectives_per_student_limit(self):
         """Get maximum number of objectives per student for user's plan"""  
-        if self.is_freemium_user():
-            return 2
+        if self.subscription_status == 'active':
+            limit = Settings.get_setting('active_objectives_per_student', 'unlimited')
+            return None if limit == 'unlimited' else int(limit)
+        elif self.is_trial_active():
+            limit = Settings.get_setting('trial_objectives_per_student', 'unlimited')
+            return None if limit == 'unlimited' else int(limit)
         else:
-            return None  # No limit for paid plans
+            # Freemium users
+            limit = Settings.get_setting('freemium_objectives_per_student', 2)
+            return int(limit)
     
     def can_add_student(self, organization_id):
         """Check if user can add another student"""
@@ -359,3 +370,69 @@ class EventSelection(db.Model):
     __table_args__ = (
         UniqueConstraint('event_id', 'objective_item_id', name='uq_event_objective_item'),
     )
+
+class Settings(db.Model):
+    """Global settings for user limits and configurations"""
+    __tablename__ = 'settings'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.String(500), nullable=False)
+    description = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    @staticmethod
+    def get_setting(key, default_value=None):
+        """Get a setting value by key"""
+        setting = Settings.query.filter_by(key=key).first()
+        if setting:
+            # Try to convert to appropriate type
+            value = setting.value
+            if value.lower() in ['true', 'false']:
+                return value.lower() == 'true'
+            elif value.isdigit():
+                return int(value)
+            else:
+                return value
+        return default_value
+    
+    @staticmethod
+    def set_setting(key, value, description=None):
+        """Set a setting value"""
+        setting = Settings.query.filter_by(key=key).first()
+        if setting:
+            setting.value = str(value)
+            setting.updated_at = datetime.now()
+            if description:
+                setting.description = description
+        else:
+            setting = Settings(
+                key=key,
+                value=str(value),
+                description=description
+            )
+            db.session.add(setting)
+        db.session.commit()
+        return setting
+    
+    @staticmethod
+    def initialize_default_settings():
+        """Initialize default settings if they don't exist"""
+        defaults = {
+            'trial_days': {'value': '7', 'description': 'Number of days for trial period'},
+            'freemium_student_limit': {'value': '4', 'description': 'Maximum students for freemium users'},
+            'freemium_objectives_per_student': {'value': '2', 'description': 'Maximum objectives per student for freemium users'},
+            'trial_student_limit': {'value': 'unlimited', 'description': 'Student limit during trial (unlimited or number)'},
+            'trial_objectives_per_student': {'value': 'unlimited', 'description': 'Objectives per student during trial'},
+            'active_student_limit': {'value': 'unlimited', 'description': 'Student limit for active subscribers'},
+            'active_objectives_per_student': {'value': 'unlimited', 'description': 'Objectives per student for active subscribers'}
+        }
+        
+        for key, data in defaults.items():
+            existing = Settings.query.filter_by(key=key).first()
+            if not existing:
+                Settings.set_setting(key, data['value'], data['description'])
+    
+    def __repr__(self):
+        return f'<Settings {self.key}: {self.value}>'

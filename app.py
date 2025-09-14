@@ -112,6 +112,9 @@ db.init_app(app)
 # Create tables
 with app.app_context():
     db.create_all()
+    # Initialize default settings
+    from models import Settings
+    Settings.initialize_default_settings()
     logging.info("Database tables created")
 
 # Database tables are managed by SQLAlchemy models in models.py
@@ -614,6 +617,7 @@ def admin_tools():
     """System tools and bulk operations for admin management"""
     
     # Get system statistics
+    from sqlalchemy import func
     stats = {
         'total_users': db.session.query(func.count(User.id)).scalar() or 0,
         'total_organizations': db.session.query(func.count(Organization.id)).scalar() or 0,
@@ -622,6 +626,533 @@ def admin_tools():
     }
     
     return render_template('admin_tools.html', stats=stats)
+
+# Bulk Operations Routes
+@app.route('/admin/bulk/extend-trials', methods=['POST'])
+@super_admin_required
+def bulk_extend_trials():
+    """Bulk extend trials for multiple users"""
+    try:
+        user_identifiers = request.json.get('user_identifiers', [])
+        try:
+            days_to_extend = int(request.json.get('days', 7))
+            if days_to_extend < 1 or days_to_extend > 365:
+                return jsonify({'error': 'Days to extend must be between 1 and 365'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid number of days provided'}), 400
+        
+        if not user_identifiers:
+            return jsonify({'error': 'No users provided'}), 400
+        
+        # Parse user identifiers (can be IDs or emails)
+        user_ids = []
+        user_emails = []
+        
+        for identifier in user_identifiers:
+            identifier = identifier.strip()
+            if not identifier:
+                continue
+            if identifier.isdigit():
+                user_ids.append(int(identifier))
+            elif '@' in identifier:  # Basic email validation
+                user_emails.append(identifier.lower())
+        
+        # Build filter conditions
+        filter_conditions = []
+        if user_ids:
+            filter_conditions.append(User.id.in_(user_ids))
+        if user_emails:
+            filter_conditions.append(User.email.in_(user_emails))
+        
+        if not filter_conditions:
+            return jsonify({'error': 'No valid user identifiers provided'}), 400
+        
+        # Find users by ID or email, only those eligible for trial extension
+        from sqlalchemy import or_
+        users = User.query.filter(
+            or_(*filter_conditions),
+            User.subscription_status.in_(['trial', 'expired'])  # Only extend trials for trial/expired users
+        ).all()
+        
+        if not users:
+            return jsonify({'error': 'No eligible users found (only trial/expired users can have trials extended)'}), 404
+        
+        # Extend trials properly
+        updated_count = 0
+        for user in users:
+            # Calculate new trial start date by moving it forward by the extension days
+            if user.trial_start_date:
+                # Extend existing trial
+                user.trial_start_date = user.trial_start_date + timedelta(days=days_to_extend)
+            else:
+                # Set new trial start date
+                user.trial_start_date = datetime.now()
+            
+            user.subscription_status = 'trial'
+            user.updated_at = datetime.now()
+            updated_count += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Extended trials for {updated_count} users by {days_to_extend} days',
+            'updated_count': updated_count
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to extend trials: {str(e)}'}), 500
+
+@app.route('/admin/bulk/update-status', methods=['POST'])
+@super_admin_required
+def bulk_update_status():
+    """Bulk update subscription status for multiple users"""
+    try:
+        user_ids = request.json.get('user_ids', [])
+        new_status = request.json.get('status')
+        
+        if not user_ids:
+            return jsonify({'error': 'No users provided'}), 400
+        
+        # Validate and convert user IDs
+        valid_user_ids = []
+        for uid in user_ids:
+            try:
+                valid_user_ids.append(int(uid))
+            except (ValueError, TypeError):
+                return jsonify({'error': f'Invalid user ID: {uid}'}), 400
+        
+        if new_status not in ['trial', 'active', 'past_due', 'cancelled', 'expired']:
+            return jsonify({'error': 'Invalid status'}), 400
+        
+        # Find users
+        users = User.query.filter(User.id.in_(valid_user_ids)).all()
+        
+        if not users:
+            return jsonify({'error': 'No valid users found'}), 404
+        
+        # Update statuses
+        updated_count = 0
+        for user in users:
+            user.subscription_status = new_status
+            user.updated_at = datetime.now()
+            updated_count += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Updated status to {new_status} for {updated_count} users',
+            'updated_count': updated_count
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to update status: {str(e)}'}), 500
+
+@app.route('/admin/export/users')
+@super_admin_required
+def export_users():
+    """Export all users to CSV"""
+    try:
+        users = User.query.all()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow([
+            'ID', 'Email', 'First Name', 'Last Name', 'Subscription Status', 
+            'Plan Type', 'Is Admin', 'Trial Start Date', 'Created At', 'Updated At'
+        ])
+        
+        # Write user data
+        for user in users:
+            writer.writerow([
+                user.id,
+                user.email,
+                user.first_name or '',
+                user.last_name or '',
+                user.subscription_status,
+                user.plan_type,
+                'Yes' if user.is_admin else 'No',
+                user.trial_start_date.strftime('%Y-%m-%d') if user.trial_start_date else '',
+                user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else '',
+                user.updated_at.strftime('%Y-%m-%d %H:%M:%S') if user.updated_at else ''
+            ])
+        
+        output.seek(0)
+        
+        response = make_response(output.getvalue())
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = f'attachment; filename=users_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to export users: {str(e)}'}), 500
+
+@app.route('/admin/export/subscriptions')
+@super_admin_required
+def export_subscriptions():
+    """Export subscription data to CSV"""
+    try:
+        users = User.query.all()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow([
+            'User ID', 'Email', 'Name', 'Subscription Status', 'Plan Type',
+            'Trial Start Date', 'Trial Days Left', 'Stripe Customer ID', 'Stripe Subscription ID'
+        ])
+        
+        # Write subscription data
+        for user in users:
+            trial_days_left = user.days_left_in_trial() if user.subscription_status == 'trial' else 0
+            writer.writerow([
+                user.id,
+                user.email,
+                user.full_name,
+                user.subscription_status,
+                user.plan_type,
+                user.trial_start_date.strftime('%Y-%m-%d') if user.trial_start_date else '',
+                trial_days_left,
+                user.stripe_customer_id or '',
+                user.stripe_subscription_id or ''
+            ])
+        
+        output.seek(0)
+        
+        response = make_response(output.getvalue())
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = f'attachment; filename=subscriptions_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to export subscriptions: {str(e)}'}), 500
+
+@app.route('/admin/import/users', methods=['GET', 'POST'])
+@super_admin_required
+def import_users():
+    """Import users from Excel spreadsheet"""
+    if request.method == 'GET':
+        # Return form for uploading user spreadsheet
+        return render_template('admin_user_import.html')
+    
+    try:
+        # Check if file was uploaded
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        if not file.filename or file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Validate file type - only .xlsx and .csv supported
+        allowed_extensions = {'.xlsx', '.csv'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            return jsonify({'error': 'Invalid file type. Please upload an Excel (.xlsx) or CSV file.'}), 400
+        
+        # Validate file size (10MB limit)
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()
+        file.seek(0)  # Reset to beginning
+        if file_size > 10 * 1024 * 1024:  # 10MB
+            return jsonify({'error': 'File too large. Please upload a file smaller than 10MB.'}), 400
+        
+        # Create temp directory if it doesn't exist
+        temp_dir = 'temp_uploads'
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Save uploaded file temporarily with secure filename
+        import time
+        import uuid
+        from werkzeug.utils import secure_filename
+        
+        # Create secure filename
+        original_name = secure_filename(file.filename or 'uploaded_users.xlsx')
+        safe_filename = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{original_name}"
+        temp_filepath = os.path.join(temp_dir, safe_filename)
+        
+        try:
+            file.save(temp_filepath)
+            logging.info(f"User file uploaded successfully: {safe_filename}")
+            
+            # Process the file based on type
+            if file_ext == '.csv':
+                results = import_users_from_csv(temp_filepath)
+            else:
+                results = import_users_from_excel(temp_filepath)
+            
+            # Clean up temp file
+            try:
+                os.remove(temp_filepath)
+            except:
+                pass
+            
+            return jsonify({
+                'success': True,
+                'message': f'Successfully imported {results["users_added"]} users',
+                'results': results
+            })
+            
+        except Exception as e:
+            # Clean up temp file on error
+            try:
+                if os.path.exists(temp_filepath):
+                    os.remove(temp_filepath)
+            except:
+                pass
+            raise e
+            
+    except Exception as e:
+        logging.error(f"User import failed: {str(e)}")
+        return jsonify({'error': f'Import failed: {str(e)}'}), 500
+
+def import_users_from_csv(filepath):
+    """Import users from CSV file"""
+    results = {'users_added': 0, 'users_updated': 0, 'errors': []}
+    
+    try:
+        import csv
+        with open(filepath, 'r', encoding='utf-8') as csvfile:
+            # Detect delimiter
+            sample = csvfile.read(1024)
+            csvfile.seek(0)
+            sniffer = csv.Sniffer()
+            delimiter = sniffer.sniff(sample).delimiter
+            
+            reader = csv.DictReader(csvfile, delimiter=delimiter)
+            
+            for row_num, row in enumerate(reader, start=2):  # Start at 2 since headers are row 1
+                try:
+                    email = row.get('email', '').strip().lower()
+                    if not email:
+                        results['errors'].append(f"Row {row_num}: Email is required")
+                        continue
+                    
+                    # Check if user already exists
+                    existing_user = User.query.filter_by(email=email).first()
+                    
+                    if existing_user:
+                        # Update existing user
+                        if row.get('first_name'):
+                            existing_user.first_name = row['first_name'].strip()
+                        if row.get('last_name'):
+                            existing_user.last_name = row['last_name'].strip()
+                        if row.get('subscription_status'):
+                            status = row['subscription_status'].strip().lower()
+                            if status in ['trial', 'active', 'past_due', 'cancelled', 'expired']:
+                                existing_user.subscription_status = status
+                        if row.get('plan_type'):
+                            plan = row['plan_type'].strip().lower()
+                            if plan in ['freemium', 'individual', 'team']:
+                                existing_user.plan_type = plan
+                        if row.get('is_admin'):
+                            admin_val = row['is_admin'].strip().lower()
+                            existing_user.is_admin = admin_val in ['true', '1', 'yes']
+                        
+                        existing_user.updated_at = datetime.now()
+                        results['users_updated'] += 1
+                    else:
+                        # Create new user
+                        new_user = User(
+                            email=email,
+                            first_name=row.get('first_name', '').strip(),
+                            last_name=row.get('last_name', '').strip(),
+                            subscription_status=row.get('subscription_status', 'trial').strip().lower(),
+                            plan_type=row.get('plan_type', 'freemium').strip().lower(),
+                            is_admin=row.get('is_admin', '').strip().lower() in ['true', '1', 'yes'],
+                            trial_start_date=datetime.now(),
+                            created_at=datetime.now(),
+                            updated_at=datetime.now()
+                        )
+                        
+                        # Set a default password - users will need to reset it
+                        new_user.set_password('TempPassword123!')
+                        
+                        db.session.add(new_user)
+                        results['users_added'] += 1
+                        
+                except Exception as e:
+                    results['errors'].append(f"Row {row_num}: {str(e)}")
+                    continue
+            
+            db.session.commit()
+            
+    except Exception as e:
+        db.session.rollback()
+        raise Exception(f"CSV processing error: {str(e)}")
+    
+    return results
+
+def import_users_from_excel(filepath):
+    """Import users from Excel file"""
+    results = {'users_added': 0, 'users_updated': 0, 'errors': []}
+    
+    try:
+        import openpyxl
+        workbook = openpyxl.load_workbook(filepath)
+        
+        # Try to find the right sheet (look for 'users', 'user', or use first sheet)
+        sheet = None
+        for sheet_name in workbook.sheetnames:
+            if 'user' in sheet_name.lower():
+                sheet = workbook[sheet_name]
+                break
+        
+        if not sheet:
+            sheet = workbook.active
+        
+        # Get headers from first row
+        headers = []
+        for col in range(1, sheet.max_column + 1):
+            header = sheet.cell(row=1, column=col).value
+            if header:
+                headers.append(str(header).strip().lower())
+            else:
+                headers.append('')
+        
+        # Process rows
+        for row_num in range(2, sheet.max_row + 1):
+            try:
+                row_data = {}
+                for col, header in enumerate(headers, start=1):
+                    cell_value = sheet.cell(row=row_num, column=col).value
+                    if cell_value:
+                        row_data[header] = str(cell_value).strip()
+                
+                email = row_data.get('email', '').lower()
+                if not email:
+                    results['errors'].append(f"Row {row_num}: Email is required")
+                    continue
+                
+                # Check if user already exists
+                existing_user = User.query.filter_by(email=email).first()
+                
+                if existing_user:
+                    # Update existing user
+                    if row_data.get('first_name'):
+                        existing_user.first_name = row_data['first_name']
+                    if row_data.get('last_name'):
+                        existing_user.last_name = row_data['last_name']
+                    if row_data.get('subscription_status'):
+                        status = row_data['subscription_status'].lower()
+                        if status in ['trial', 'active', 'past_due', 'cancelled', 'expired']:
+                            existing_user.subscription_status = status
+                    if row_data.get('plan_type'):
+                        plan = row_data['plan_type'].lower()
+                        if plan in ['freemium', 'individual', 'team']:
+                            existing_user.plan_type = plan
+                    if row_data.get('is_admin'):
+                        admin_val = row_data['is_admin'].lower()
+                        existing_user.is_admin = admin_val in ['true', '1', 'yes']
+                    
+                    existing_user.updated_at = datetime.now()
+                    results['users_updated'] += 1
+                else:
+                    # Create new user
+                    new_user = User(
+                        email=email,
+                        first_name=row_data.get('first_name', ''),
+                        last_name=row_data.get('last_name', ''),
+                        subscription_status=row_data.get('subscription_status', 'trial').lower(),
+                        plan_type=row_data.get('plan_type', 'freemium').lower(),
+                        is_admin=row_data.get('is_admin', '').lower() in ['true', '1', 'yes'],
+                        trial_start_date=datetime.now(),
+                        created_at=datetime.now(),
+                        updated_at=datetime.now()
+                    )
+                    
+                    # Set a default password - users will need to reset it
+                    new_user.set_password('TempPassword123!')
+                    
+                    db.session.add(new_user)
+                    results['users_added'] += 1
+                    
+            except Exception as e:
+                results['errors'].append(f"Row {row_num}: {str(e)}")
+                continue
+        
+        db.session.commit()
+        
+    except Exception as e:
+        db.session.rollback()
+        raise Exception(f"Excel processing error: {str(e)}")
+    
+    return results
+
+@app.route('/admin/settings', methods=['GET', 'POST'])
+@super_admin_required
+def admin_settings():
+    """Manage global application settings"""
+    if request.method == 'GET':
+        # Get all settings
+        from models import Settings
+        settings = Settings.query.all()
+        settings_dict = {}
+        for setting in settings:
+            settings_dict[setting.key] = {
+                'value': setting.value,
+                'description': setting.description
+            }
+        return jsonify(settings_dict)
+    
+    if request.method == 'POST':
+        try:
+            from models import Settings
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+            
+            updated_settings = []
+            for key, value in data.items():
+                # Validate setting key
+                valid_keys = [
+                    'trial_days', 'freemium_student_limit', 'freemium_objectives_per_student',
+                    'trial_student_limit', 'trial_objectives_per_student',
+                    'active_student_limit', 'active_objectives_per_student'
+                ]
+                
+                if key not in valid_keys:
+                    return jsonify({'error': f'Invalid setting key: {key}'}), 400
+                
+                # Validate value
+                if key == 'trial_days':
+                    try:
+                        int_val = int(value)
+                        if int_val < 1 or int_val > 365:
+                            return jsonify({'error': 'Trial days must be between 1 and 365'}), 400
+                    except ValueError:
+                        return jsonify({'error': 'Trial days must be a number'}), 400
+                elif 'limit' in key:
+                    if value != 'unlimited':
+                        try:
+                            int_val = int(value)
+                            if int_val < 1:
+                                return jsonify({'error': f'{key} must be positive or "unlimited"'}), 400
+                        except ValueError:
+                            return jsonify({'error': f'{key} must be a number or "unlimited"'}), 400
+                
+                # Update setting
+                Settings.set_setting(key, value)
+                updated_settings.append(key)
+            
+            return jsonify({
+                'success': True,
+                'message': f'Updated {len(updated_settings)} settings',
+                'updated': updated_settings
+            })
+            
+        except Exception as e:
+            logging.error(f"Settings update failed: {str(e)}")
+            return jsonify({'error': f'Settings update failed: {str(e)}'}), 500
 
 # Organization Admin Panel Routes
 @app.route('/org/<int:org_id>/admin')

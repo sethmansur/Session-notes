@@ -144,6 +144,7 @@
         <button class="tool-button" onclick="showBulkTrialExtension()">Bulk Extend Trials</button>
         <button class="tool-button" onclick="showBulkStatusUpdate()">Bulk Status Update</button>
         <button class="tool-button" onclick="showInactiveUserCleanup()">Find Inactive Users</button>
+        <button class="tool-button" onclick="showUserImport()">Import Users from Spreadsheet</button>
         
         <div id="bulkOperationForm" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
             <!-- Bulk operation forms will be dynamically loaded here -->
@@ -197,6 +198,21 @@
             <strong>💾 Backup Notice:</strong> Regular backups are essential. Test restore procedures regularly.
         </div>
     </div>
+    
+    <div class="tool-section">
+        <h3>⚙️ System Settings</h3>
+        <p>Configure global user limits and trial settings</p>
+        
+        <button class="tool-button" onclick="showSettingsManagement()">Manage User Limits & Settings</button>
+        
+        <div id="settingsForm" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+            <!-- Settings form will be dynamically loaded here -->
+        </div>
+        
+        <div class="warning-box">
+            <strong>⚙️ Settings Notice:</strong> Changes to limits affect all users immediately. Update carefully.
+        </div>
+    </div>
 </div>
 
 <div id="operationResults" style="background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-top: 2rem; display: none;">
@@ -215,17 +231,34 @@ function showResults(title, content) {
 // Data Export Functions
 function exportUsers() {
     showResults('Export Users', '<p>⏳ Generating user export... This may take a few moments.</p>');
-    // In a real implementation, this would make an AJAX call to a new route
+    
+    // Create a temporary link to trigger download
+    const link = document.createElement('a');
+    link.href = '/admin/export/users';
+    link.download = 'users_export.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
     setTimeout(() => {
-        showResults('Export Complete', '<p>✅ User export completed successfully. <a href="#" onclick="alert(\'File download would start here\')">Download CSV file</a></p>');
-    }, 2000);
+        showResults('Export Complete', '<p>✅ User export completed successfully. File download should have started automatically.</p>');
+    }, 500);
 }
 
 function exportSubscriptions() {
     showResults('Export Subscriptions', '<p>⏳ Generating subscription data export...</p>');
+    
+    // Create a temporary link to trigger download
+    const link = document.createElement('a');
+    link.href = '/admin/export/subscriptions';
+    link.download = 'subscriptions_export.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
     setTimeout(() => {
-        showResults('Export Complete', '<p>✅ Subscription export completed. <a href="#" onclick="alert(\'File download would start here\')">Download CSV file</a></p>');
-    }, 2000);
+        showResults('Export Complete', '<p>✅ Subscription export completed. File download should have started automatically.</p>');
+    }, 500);
 }
 
 function exportAnalytics() {
@@ -380,19 +413,308 @@ function showRestoreTools() {
     );
 }
 
-// Placeholder functions for bulk operations
+// Real bulk operations functions
 function processBulkTrialExtension() {
+    const textarea = document.querySelector('#bulkOperationForm textarea');
+    const select = document.querySelector('#bulkOperationForm select');
+    
+    if (!textarea || !select) {
+        alert('Form elements not found');
+        return;
+    }
+    
+    const userIdentifiers = textarea.value.split('\n').filter(line => line.trim() !== '');
+    const daysToExtend = parseInt(select.value.replace(/\D/g, '')) || 7;
+    
+    if (userIdentifiers.length === 0) {
+        alert('Please enter at least one user ID or email address');
+        return;
+    }
+    
     showResults('Trial Extension Processing', '<p>⏳ Processing trial extensions...</p>');
-    setTimeout(() => {
-        showResults('Extension Complete', '<p>✅ Trial extensions processed successfully.</p>');
-    }, 3000);
+    
+    fetch('/admin/bulk/extend-trials', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            user_identifiers: userIdentifiers,
+            days: daysToExtend
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showResults('Extension Complete', `<p>✅ ${data.message}</p>`);
+        } else {
+            showResults('Extension Failed', `<p>❌ Error: ${data.error}</p>`);
+        }
+    })
+    .catch(error => {
+        showResults('Extension Failed', `<p>❌ Network error: ${error.message}</p>`);
+    });
 }
 
 function processBulkStatusUpdate() {
+    const textarea = document.querySelector('#bulkOperationForm textarea');
+    const select = document.querySelector('#bulkOperationForm select');
+    
+    if (!textarea || !select) {
+        alert('Form elements not found');
+        return;
+    }
+    
+    const userIds = textarea.value.split('\n')
+        .filter(line => line.trim() !== '')
+        .map(line => parseInt(line.trim()))
+        .filter(id => !isNaN(id));
+    
+    const status = select.value.toLowerCase().replace('set to ', '');
+    
+    if (userIds.length === 0) {
+        alert('Please enter at least one valid user ID');
+        return;
+    }
+    
     showResults('Status Update Processing', '<p>⏳ Updating user statuses...</p>');
-    setTimeout(() => {
-        showResults('Update Complete', '<p>✅ User status updates completed.</p>');
-    }, 3000);
+    
+    fetch('/admin/bulk/update-status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            user_ids: userIds,
+            status: status
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showResults('Update Complete', `<p>✅ ${data.message}</p>`);
+        } else {
+            showResults('Update Failed', `<p>❌ Error: ${data.error}</p>`);
+        }
+    })
+    .catch(error => {
+        showResults('Update Failed', `<p>❌ Network error: ${error.message}</p>`);
+    });
+}
+
+// User Import Functions
+function showUserImport() {
+    const form = `
+        <h4>Import Users from Spreadsheet</h4>
+        <p>Upload an Excel (.xlsx) or CSV file with user data. Required column: email. Optional columns: first_name, last_name, subscription_status, plan_type, is_admin</p>
+        <div class="warning-box">
+            <strong>📋 Expected Format:</strong><br>
+            • Excel or CSV file with headers in first row<br>
+            • email (required) - User email address<br>
+            • first_name (optional) - User's first name<br>
+            • last_name (optional) - User's last name<br>
+            • subscription_status (optional) - trial, active, past_due, cancelled, expired<br>
+            • plan_type (optional) - freemium, individual, team<br>
+            • is_admin (optional) - true/false for admin privileges
+        </div>
+        <input type="file" id="userImportFile" accept=".xlsx,.csv" style="margin: 1rem 0; padding: 0.5rem; width: 100%;">
+        <button class="tool-button" onclick="processUserImport()">Import Users</button>
+    `;
+    document.getElementById('bulkOperationForm').innerHTML = form;
+    document.getElementById('bulkOperationForm').style.display = 'block';
+}
+
+function processUserImport() {
+    const fileInput = document.getElementById('userImportFile');
+    
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        alert('Please select a file to import');
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    
+    if (file.size > maxSize) {
+        alert('File too large. Please upload a file smaller than 10MB.');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    showResults('User Import Processing', '<p>⏳ Processing user import... This may take a few moments.</p>');
+    
+    fetch('/admin/import/users', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            let resultHtml = `<p>✅ ${data.message}</p>`;
+            if (data.results) {
+                resultHtml += `<p><strong>Results:</strong></p>`;
+                resultHtml += `<ul>`;
+                resultHtml += `<li>Users added: ${data.results.users_added}</li>`;
+                resultHtml += `<li>Users updated: ${data.results.users_updated}</li>`;
+                if (data.results.errors && data.results.errors.length > 0) {
+                    resultHtml += `<li>Errors: ${data.results.errors.length}</li>`;
+                    resultHtml += `<details><summary>Show errors</summary><ul>`;
+                    data.results.errors.forEach(error => {
+                        resultHtml += `<li>${error}</li>`;
+                    });
+                    resultHtml += `</ul></details>`;
+                }
+                resultHtml += `</ul>`;
+            }
+            showResults('Import Complete', resultHtml);
+        } else {
+            showResults('Import Failed', `<p>❌ Error: ${data.error}</p>`);
+        }
+    })
+    .catch(error => {
+        showResults('Import Failed', `<p>❌ Network error: ${error.message}</p>`);
+    });
+}
+
+// Settings Management Functions
+function showSettingsManagement() {
+    showResults('Loading Settings', '<p>⏳ Loading current settings...</p>');
+    
+    fetch('/admin/settings', {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showResults('Settings Load Failed', `<p>❌ Error: ${data.error}</p>`);
+            return;
+        }
+        
+        const form = `
+            <h4>System Settings Management</h4>
+            <p>Configure global user limits and trial settings. Changes apply immediately to all users.</p>
+            
+            <div class="settings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+                <div class="setting-group">
+                    <h5>🕐 Trial Settings</h5>
+                    <label for="trial_days">Trial Period (days):</label>
+                    <input type="number" id="trial_days" value="${data.trial_days?.value || '7'}" min="1" max="365" style="width: 100%; margin-bottom: 0.5rem;">
+                    <small>Default: 7 days</small>
+                </div>
+                
+                <div class="setting-group">
+                    <h5>🎯 Trial Limits</h5>
+                    <label for="trial_student_limit">Students during trial:</label>
+                    <input type="text" id="trial_student_limit" value="${data.trial_student_limit?.value || 'unlimited'}" style="width: 100%; margin-bottom: 0.5rem;">
+                    <label for="trial_objectives_per_student">Objectives per student (trial):</label>
+                    <input type="text" id="trial_objectives_per_student" value="${data.trial_objectives_per_student?.value || 'unlimited'}" style="width: 100%; margin-bottom: 0.5rem;">
+                    <small>Use "unlimited" or a number</small>
+                </div>
+                
+                <div class="setting-group">
+                    <h5>💰 Freemium Limits</h5>
+                    <label for="freemium_student_limit">Students (freemium):</label>
+                    <input type="number" id="freemium_student_limit" value="${data.freemium_student_limit?.value || '4'}" min="1" style="width: 100%; margin-bottom: 0.5rem;">
+                    <label for="freemium_objectives_per_student">Objectives per student (freemium):</label>
+                    <input type="number" id="freemium_objectives_per_student" value="${data.freemium_objectives_per_student?.value || '2'}" min="1" style="width: 100%; margin-bottom: 0.5rem;">
+                    <small>Default: 4 students, 2 objectives each</small>
+                </div>
+                
+                <div class="setting-group">
+                    <h5>⭐ Active Subscription Limits</h5>
+                    <label for="active_student_limit">Students (active subscription):</label>
+                    <input type="text" id="active_student_limit" value="${data.active_student_limit?.value || 'unlimited'}" style="width: 100%; margin-bottom: 0.5rem;">
+                    <label for="active_objectives_per_student">Objectives per student (active):</label>
+                    <input type="text" id="active_objectives_per_student" value="${data.active_objectives_per_student?.value || 'unlimited'}" style="width: 100%; margin-bottom: 0.5rem;">
+                    <small>Use "unlimited" or a number</small>
+                </div>
+            </div>
+            
+            <div style="margin-top: 1rem; padding: 1rem; background: #fff3cd; border-radius: 8px;">
+                <strong>⚠️ Warning:</strong> Changes to these settings will immediately affect all users of the system. 
+                Trial users, freemium users, and active subscribers will see their limits change based on these values.
+            </div>
+            
+            <button class="tool-button" onclick="updateSettings()" style="margin-top: 1rem;">Save Settings</button>
+        `;
+        
+        document.getElementById('settingsForm').innerHTML = form;
+        document.getElementById('settingsForm').style.display = 'block';
+        
+        // Hide the results now that we've loaded the form
+        document.getElementById('operationResults').style.display = 'none';
+    })
+    .catch(error => {
+        showResults('Settings Load Failed', `<p>❌ Network error: ${error.message}</p>`);
+    });
+}
+
+function updateSettings() {
+    const settings = {
+        trial_days: document.getElementById('trial_days').value,
+        trial_student_limit: document.getElementById('trial_student_limit').value,
+        trial_objectives_per_student: document.getElementById('trial_objectives_per_student').value,
+        freemium_student_limit: document.getElementById('freemium_student_limit').value,
+        freemium_objectives_per_student: document.getElementById('freemium_objectives_per_student').value,
+        active_student_limit: document.getElementById('active_student_limit').value,
+        active_objectives_per_student: document.getElementById('active_objectives_per_student').value
+    };
+    
+    // Validate trial days
+    const trialDays = parseInt(settings.trial_days);
+    if (isNaN(trialDays) || trialDays < 1 || trialDays > 365) {
+        alert('Trial days must be a number between 1 and 365');
+        return;
+    }
+    
+    // Validate other numeric fields
+    const numericFields = ['freemium_student_limit', 'freemium_objectives_per_student'];
+    for (let field of numericFields) {
+        const value = settings[field];
+        if (value !== 'unlimited' && (isNaN(parseInt(value)) || parseInt(value) < 1)) {
+            alert(`${field.replace('_', ' ')} must be a positive number or "unlimited"`);
+            return;
+        }
+    }
+    
+    showResults('Updating Settings', '<p>⏳ Saving settings...</p>');
+    
+    fetch('/admin/settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showResults('Settings Updated', `
+                <p>✅ ${data.message}</p>
+                <p><strong>Updated settings:</strong></p>
+                <ul>
+                    ${data.updated.map(key => `<li>${key.replace('_', ' ')}</li>`).join('')}
+                </ul>
+                <p><em>These changes are now active for all users.</em></p>
+            `);
+        } else {
+            showResults('Settings Update Failed', `<p>❌ Error: ${data.error}</p>`);
+        }
+    })
+    .catch(error => {
+        showResults('Settings Update Failed', `<p>❌ Network error: ${error.message}</p>`);
+    });
 }
 </script>
 {% endblock %}
