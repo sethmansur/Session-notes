@@ -3548,6 +3548,12 @@ def print_data_collection_sheet():
         logging.error(f"Error generating print sheet: {e}")
         return f"Error generating print sheet: {str(e)}", 500
 
+@app.route('/app/import_spreadsheet', methods=['POST'])
+@require_subscription  
+def import_spreadsheet_user():
+    """Import data from uploaded Excel spreadsheet for regular users."""
+    return import_spreadsheet_logic()
+
 @app.route('/app/admin/import_spreadsheet', methods=['GET', 'POST'])
 @admin_required
 def import_spreadsheet():
@@ -3555,6 +3561,10 @@ def import_spreadsheet():
     if request.method == 'GET':
         return render_template('import.html')
     
+    return import_spreadsheet_logic()
+
+def import_spreadsheet_logic():
+    """Core logic for importing spreadsheet data."""
     try:
         # Check if file was uploaded
         if 'file' not in request.files:

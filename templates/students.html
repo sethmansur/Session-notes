@@ -9,6 +9,13 @@
         <!-- Bulk Data Management Section -->
         <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
             <h4 style="margin: 0 0 0.5rem 0; color: #1565c0;">📊 Bulk Data Management</h4>
+            
+            <!-- HIPAA Compliance Warning -->
+            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem;">
+                <strong>⚠️ HIPAA Compliance:</strong>
+                <span style="font-size: 0.85rem; color: #856404;">Do NOT include full client names or PII in uploads. Use first names/initials only.</span>
+            </div>
+            
             <p style="margin: 0 0 1rem 0; color: #1976d2; font-size: 0.9rem;">Upload multiple students and objectives at once using our Excel template.</p>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                 <a href="/download/bulk-upload-template" class="btn btn-secondary" target="_blank">
@@ -572,7 +579,7 @@
             const formData = new FormData();
             formData.append('file', file);
             
-            const response = await fetch('/app/admin/import_spreadsheet', {
+            const response = await fetch('/app/import_spreadsheet', {
                 method: 'POST',
                 body: formData
             });
