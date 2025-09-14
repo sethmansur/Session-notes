@@ -30,8 +30,10 @@ if os.environ.get("REPLIT_DEPLOYMENT") == "1":
         raise SystemExit("SESSION_SECRET environment variable must be configured for production deployment")
     app.secret_key = session_secret
 else:
-    # Development environment
+    # Development environment - enable auth bypass for admin testing
     app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-for-speech-therapy-app-12345")
+    # Temporarily enable auth bypass for admin testing
+    os.environ["AUTH_DISABLED"] = "1"
 
 # Cookie configuration moved below for consistency
 
