@@ -618,8 +618,9 @@ def direct_dashboard():
     return redirect('/direct/collect')
 
 @app.route('/direct/report')
+@require_subscription
 def direct_report():
-    """Show reports page via direct access. No authentication required."""
+    """Show reports page via direct access. Authentication required."""
     start_date = request.args.get('start_date', '')
     end_date = request.args.get('end_date', '')
     student_id = request.args.get('student_id', '')
@@ -1843,13 +1844,226 @@ def save_session():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+def generate_summary_report(organization, start_date, end_date, student_id):
+    """Helper function to generate summary report data."""
+    from sqlalchemy import func, or_, and_
+    
+    report_data = db.session.query(
+        Student.first_name.label('student'),
+        Objective.objective_text.label('objective'),
+        func.coalesce(func.sum(Event.count), 0).label('total_count'),
+        func.coalesce(func.sum(Event.count2), 0).label('partial_count'),
+        func.coalesce(func.sum(Event.count3), 0).label('incorrect_count'),
+        func.min(Session.date).label('start_date'),
+        func.max(Session.date).label('end_date')
+    ).select_from(Student)\
+     .join(Objective, Objective.student_id == Student.id)\
+     .outerjoin(Event, Event.objective_id == Objective.id)\
+     .outerjoin(Session, Event.session_id == Session.id)\
+     .filter(Student.organization_id == organization.id)
+    
+    # Apply date filters
+    if start_date and end_date:
+        report_data = report_data.filter(
+            or_(Session.date.is_(None), 
+                and_(Session.date >= start_date, Session.date <= end_date))
+        )
+    elif start_date:
+        report_data = report_data.filter(
+            or_(Session.date.is_(None), Session.date >= start_date)
+        )
+    elif end_date:
+        report_data = report_data.filter(
+            or_(Session.date.is_(None), Session.date <= end_date)
+        )
+    
+    if student_id:
+        report_data = report_data.filter(Student.id == student_id)
+        
+    report_data = report_data.group_by(Student.id, Objective.id)\
+                             .order_by(Student.first_name, Objective.objective_text).all()
+    
+    # Calculate totals and percentages
+    summary_totals = {
+        'total_correct': sum(row.total_count for row in report_data),
+        'total_partial': sum(row.partial_count for row in report_data),
+        'total_incorrect': sum(row.incorrect_count for row in report_data),
+    }
+    summary_totals['total_responses'] = summary_totals['total_correct'] + summary_totals['total_partial'] + summary_totals['total_incorrect']
+    summary_totals['success_rate'] = summary_totals['total_correct'] + summary_totals['total_partial']
+    
+    if summary_totals['total_responses'] > 0:
+        summary_totals['correct_percentage'] = round((summary_totals['total_correct'] / summary_totals['total_responses']) * 100, 1)
+        summary_totals['partial_percentage'] = round((summary_totals['total_partial'] / summary_totals['total_responses']) * 100, 1)
+        summary_totals['incorrect_percentage'] = round((summary_totals['total_incorrect'] / summary_totals['total_responses']) * 100, 1)
+        summary_totals['success_percentage'] = round((summary_totals['success_rate'] / summary_totals['total_responses']) * 100, 1)
+    else:
+        summary_totals['correct_percentage'] = summary_totals['partial_percentage'] = summary_totals['incorrect_percentage'] = summary_totals['success_percentage'] = 0
+    
+    return report_data, summary_totals
+
+def generate_session_analytics_report(organization, start_date, end_date, student_id):
+    """Helper function to generate session analytics report data."""
+    from sqlalchemy import func, and_
+    
+    analytics_query = db.session.query(
+        Session.date,
+        Student.first_name.label('student_name'),
+        Student.id.label('student_id'),
+        func.sum(Event.count).label('main_count'),
+        func.sum(Event.count2).label('count2_total'),
+        func.sum(Event.count3).label('count3_total'),
+        func.count(Event.id).label('event_instances'),
+        Event.prompt_level.label('session_prompt')
+    ).select_from(Event)\
+     .join(Session, Event.session_id == Session.id)\
+     .join(Student, Event.student_id == Student.id)\
+     .filter(Student.organization_id == organization.id)
+    
+    # Apply date filters
+    if start_date and end_date:
+        analytics_query = analytics_query.filter(
+            and_(Session.date >= start_date, Session.date <= end_date)
+        )
+    elif start_date:
+        analytics_query = analytics_query.filter(Session.date >= start_date)
+    elif end_date:
+        analytics_query = analytics_query.filter(Session.date <= end_date)
+    
+    if student_id:
+        analytics_query = analytics_query.filter(Student.id == student_id)
+    
+    analytics_data = analytics_query.group_by(
+        Session.date, Student.id, Student.first_name, Event.prompt_level
+    ).order_by(Session.date.desc(), Student.first_name).all()
+    
+    # Process the data for display
+    session_analytics = []
+    analytics_totals = {
+        'total_correct': 0,
+        'total_partial': 0,
+        'total_incorrect': 0,
+        'total_sessions': len(set(row.date for row in analytics_data))
+    }
+    
+    for row in analytics_data:
+        main_count = float(row.main_count or 0)
+        count2_total = float(row.count2_total or 0)
+        count3_total = float(row.count3_total or 0)
+        event_instances = int(row.event_instances or 0)
+        
+        combined_total = main_count + count2_total
+        grand_total = main_count + count2_total + count3_total
+        
+        analytics_totals['total_correct'] += main_count
+        analytics_totals['total_partial'] += count2_total
+        analytics_totals['total_incorrect'] += count3_total
+        
+        # Calculate fractions and percentages
+        if grand_total > 0:
+            main_fraction = f"{main_count}/{grand_total}"
+            count2_fraction = f"{count2_total}/{grand_total}"
+            count3_fraction = f"{count3_total}/{grand_total}"
+            combined_fraction = f"{combined_total}/{grand_total}"
+            
+            main_percentage = round((main_count / grand_total) * 100, 1)
+            count2_percentage = round((count2_total / grand_total) * 100, 1)
+            count3_percentage = round((count3_total / grand_total) * 100, 1)
+            combined_percentage = round((combined_total / grand_total) * 100, 1)
+        else:
+            main_fraction = count2_fraction = count3_fraction = combined_fraction = "0/0"
+            main_percentage = count2_percentage = count3_percentage = combined_percentage = 0
+        
+        session_analytics.append({
+            'date': row.date,
+            'student_name': row.student_name,
+            'session_prompt': row.session_prompt or 'Not Recorded',
+            'main_count': int(main_count),
+            'count2_total': int(count2_total),
+            'count3_total': int(count3_total),
+            'combined_total': int(combined_total),
+            'grand_total': int(grand_total),
+            'event_instances': event_instances,
+            'main_fraction': main_fraction,
+            'count2_fraction': count2_fraction,
+            'count3_fraction': count3_fraction,
+            'combined_fraction': combined_fraction,
+            'main_percentage': main_percentage,
+            'count2_percentage': count2_percentage,
+            'count3_percentage': count3_percentage,
+            'combined_percentage': combined_percentage
+        })
+    
+    # Calculate overall analytics totals
+    analytics_totals['total_responses'] = analytics_totals['total_correct'] + analytics_totals['total_partial'] + analytics_totals['total_incorrect']
+    analytics_totals['success_rate'] = analytics_totals['total_correct'] + analytics_totals['total_partial']
+    
+    if analytics_totals['total_responses'] > 0:
+        analytics_totals['correct_percentage'] = round((analytics_totals['total_correct'] / analytics_totals['total_responses']) * 100, 1)
+        analytics_totals['partial_percentage'] = round((analytics_totals['total_partial'] / analytics_totals['total_responses']) * 100, 1)
+        analytics_totals['incorrect_percentage'] = round((analytics_totals['total_incorrect'] / analytics_totals['total_responses']) * 100, 1)
+        analytics_totals['success_percentage'] = round((analytics_totals['success_rate'] / analytics_totals['total_responses']) * 100, 1)
+    else:
+        analytics_totals['correct_percentage'] = analytics_totals['partial_percentage'] = analytics_totals['incorrect_percentage'] = analytics_totals['success_percentage'] = 0
+    
+    return session_analytics, analytics_totals
+
+def generate_daily_summary_report(organization, start_date, end_date, student_id):
+    """Helper function to generate daily summary report data."""
+    from sqlalchemy import func, and_
+    
+    daily_query = db.session.query(
+        Session.date,
+        func.sum(Event.count + Event.count2 + Event.count3).label('total_attempts'),
+        func.count(func.distinct(Event.objective_id)).label('goal_instances'),
+        func.count(func.distinct(Event.student_id)).label('students_seen')
+    ).select_from(Event)\
+     .join(Session, Event.session_id == Session.id)\
+     .join(Student, Event.student_id == Student.id)\
+     .filter(Student.organization_id == organization.id)
+    
+    if start_date and end_date:
+        daily_query = daily_query.filter(and_(Session.date >= start_date, Session.date <= end_date))
+    elif start_date:
+        daily_query = daily_query.filter(Session.date >= start_date)
+    elif end_date:
+        daily_query = daily_query.filter(Session.date <= end_date)
+    
+    if student_id:
+        daily_query = daily_query.filter(Student.id == student_id)
+    
+    daily_data = daily_query.group_by(Session.date).order_by(Session.date.desc()).all()
+    
+    daily_sessions = []
+    daily_totals = {
+        'total_sessions': len(daily_data),
+        'total_attempts': sum(row.total_attempts for row in daily_data),
+        'total_goal_instances': sum(row.goal_instances for row in daily_data),
+        'avg_attempts_per_session': 0,
+        'avg_students_per_session': 0
+    }
+    
+    if daily_totals['total_sessions'] > 0:
+        daily_totals['avg_attempts_per_session'] = round(daily_totals['total_attempts'] / daily_totals['total_sessions'], 1)
+        daily_totals['avg_students_per_session'] = round(sum(row.students_seen for row in daily_data) / daily_totals['total_sessions'], 1)
+    
+    for row in daily_data:
+        daily_sessions.append({
+            'date': row.date,
+            'total_attempts': row.total_attempts,
+            'goal_instances': row.goal_instances,
+            'students_seen': row.students_seen
+        })
+    
+    return daily_sessions, daily_totals
+
 @app.route('/app/report')
 def report():
-    """Show reports page with filtering."""
+    """Show comprehensive reports dashboard with ALL report types displayed simultaneously."""
     start_date = request.args.get('start_date', '')
     end_date = request.args.get('end_date', '')
     student_id = request.args.get('student_id', '')
-    report_type = request.args.get('type', 'by_objective')
+    report_type = request.args.get('type', 'comprehensive')  # Default to comprehensive view
     
     # Get default organization
     organization = Organization.query.first()
@@ -1867,6 +2081,76 @@ def report():
         start_date = (date.today().replace(day=1)).isoformat()
     if not end_date:
         end_date = date.today().isoformat()
+    
+    # Generate ALL report types
+    try:
+        # 1. Summary Report
+        summary_data, summary_totals = generate_summary_report(organization, start_date, end_date, student_id)
+        
+        # 2. Session Analytics Report
+        session_analytics, analytics_totals = generate_session_analytics_report(organization, start_date, end_date, student_id)
+        
+        # 3. Daily Summary Report
+        daily_sessions, daily_totals = generate_daily_summary_report(organization, start_date, end_date, student_id)
+        
+        # 4. Generate Chart Data for Visualizations
+        chart_data = {
+            'summary_chart': {
+                'labels': ['Correct (+)', 'Partial (+pt)', 'Incorrect (X)'],
+                'data': [summary_totals['total_correct'], summary_totals['total_partial'], summary_totals['total_incorrect']],
+                'percentages': [summary_totals['correct_percentage'], summary_totals['partial_percentage'], summary_totals['incorrect_percentage']],
+                'colors': ['#28a745', '#6f42c1', '#fd7e14']
+            },
+            'analytics_chart': {
+                'labels': ['Correct (+)', 'Partial (+pt)', 'Incorrect (X)'],
+                'data': [analytics_totals['total_correct'], analytics_totals['total_partial'], analytics_totals['total_incorrect']],
+                'percentages': [analytics_totals['correct_percentage'], analytics_totals['partial_percentage'], analytics_totals['incorrect_percentage']],
+                'colors': ['#28a745', '#6f42c1', '#fd7e14']
+            },
+            'daily_trend': {
+                'labels': [str(session['date']) for session in daily_sessions[-7:]][::-1],  # Last 7 days
+                'attempts': [session['total_attempts'] for session in daily_sessions[-7:]][::-1],
+                'students': [session['students_seen'] for session in daily_sessions[-7:]][::-1]
+            }
+        }
+        
+        # Combine all data for template
+        comprehensive_data = {
+            'summary': {
+                'data': summary_data,
+                'totals': summary_totals,
+                'chart': chart_data['summary_chart']
+            },
+            'session_analytics': {
+                'data': session_analytics,
+                'totals': analytics_totals,
+                'chart': chart_data['analytics_chart']
+            },
+            'daily_summary': {
+                'data': daily_sessions,
+                'totals': daily_totals,
+                'chart': chart_data['daily_trend']
+            }
+        }
+        
+        return render_template('comprehensive_report.html',
+                             comprehensive_data=comprehensive_data,
+                             students=students,
+                             start_date=start_date,
+                             end_date=end_date,
+                             student_id=student_id,
+                             report_type=report_type)
+    
+    except Exception as e:
+        logging.error(f"Error generating comprehensive reports: {str(e)}")
+        return render_template('comprehensive_report.html',
+                             comprehensive_data={},
+                             students=students,
+                             start_date=start_date,
+                             end_date=end_date,
+                             student_id=student_id,
+                             report_type=report_type,
+                             error_message=f"Error generating reports: {str(e)}")
     
     # Build base query - get all students and objectives, then LEFT JOIN events
     from sqlalchemy import func, or_, and_
@@ -2974,6 +3258,7 @@ def report_pdf():
         return f"Error generating PDF: {str(e)}", 500
 
 @app.route('/app/report.csv')
+@require_subscription
 def report_csv():
     """Export report as CSV for ALL report types."""
     start_date = request.args.get('start_date', '')
@@ -3381,6 +3666,7 @@ def report_csv():
                      download_name=filename)
 
 @app.route('/app/report.tsv')
+@require_subscription
 def report_tsv():
     """Export report as TSV for clipboard."""
     start_date = request.args.get('start_date', '')

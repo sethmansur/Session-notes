@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1400px; margin: 0 auto;">
+    <h2 style="margin-bottom: 2rem; color: #333;">📊 Comprehensive Reports Dashboard</h2>
+    
+    <!-- Filters Section -->
+    <div class="card" style="margin-bottom: 2rem;">
+        <h3 style="margin-bottom: 1rem;">🔧 Report Filters & Controls</h3>
+        
+        <form method="GET" class="grid grid-2" style="gap: 1rem;">
+            <div class="form-group">
+                <label for="start_date">Start Date</label>
+                <input type="date" id="start_date" name="start_date" value="{{ start_date }}" onchange="this.form.submit()">
+            </div>
+            
+            <div class="form-group">
+                <label for="end_date">End Date</label>
+                <input type="date" id="end_date" name="end_date" value="{{ end_date }}" onchange="this.form.submit()">
+            </div>
+            
+            <div class="form-group">
+                <label for="student_id">Student (optional)</label>
+                <select id="student_id" name="student_id" onchange="this.form.submit()">
+                    <option value="">All Students</option>
+                    {% for student in students %}
+                    <option value="{{ student.id }}" {% if student.id|string == student_id %}selected{% endif %}>
+                        {{ student.first_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">🔄 Refresh All Reports</button>
+            </div>
+        </form>
+    </div>
+
+    {% if error_message %}
+    <div class="card" style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;">
+        <h3>⚠️ Error Loading Reports</h3>
+        <p>{{ error_message }}</p>
+    </div>
+    {% elif comprehensive_data %}
+    
+    <!-- Summary Report Section -->
+    <div class="card" style="margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="margin: 0; color: #2c3e50;">📋 Summary Report ({{ comprehensive_data.summary.data|length }} objectives)</h3>
+            <div style="display: flex; gap: 0.5rem;">
+                <a href="{{ url_for('report_csv', start_date=start_date, end_date=end_date, student_id=student_id, type='summary') }}" 
+                   class="btn btn-secondary btn-small">📄 CSV</a>
+                <a href="{{ url_for('report_pdf', start_date=start_date, end_date=end_date, student_id=student_id, type='summary') }}" 
+                   class="btn btn-secondary btn-small">📑 PDF</a>
+            </div>
+        </div>
+        
+        <!-- Summary Totals -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: linear-gradient(135deg, #28a745, #20c997); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.summary.totals.total_correct }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Correct Responses (+)</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.summary.totals.correct_percentage }}%</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #6f42c1, #9561e2); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.summary.totals.total_partial }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Partial Credit (+pt)</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.summary.totals.partial_percentage }}%</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #fd7e14, #fd9843); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.summary.totals.total_incorrect }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Incorrect Responses (X)</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.summary.totals.incorrect_percentage }}%</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #007bff, #0056b3); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.summary.totals.success_rate }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Success Rate (+/+pt)</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.summary.totals.success_percentage }}%</div>
+            </div>
+        </div>
+        
+        <!-- Summary Chart -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-bottom: 1.5rem;">
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; background: white; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="background: #f8f9fa;">
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Student</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Objective</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Correct (+)</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Partial (+pt)</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Incorrect (X)</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in comprehensive_data.summary.data[:10] %}
+                        <tr style="{% if loop.index0 % 2 == 0 %}background: #f8f9fa;{% endif %}">
+                            <td style="padding: 12px; border: 1px solid #ddd;">{{ row.student }}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd;">{{ row.objective }}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; color: #28a745; font-weight: bold;">{{ row.total_count }}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; color: #6f42c1; font-weight: bold;">{{ row.partial_count }}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; color: #fd7e14; font-weight: bold;">{{ row.incorrect_count }}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{{ row.total_count + row.partial_count + row.incorrect_count }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if comprehensive_data.summary.data|length > 10 %}
+                        <tr>
+                            <td colspan="6" style="padding: 12px; text-align: center; color: #666; font-style: italic;">
+                                ... and {{ comprehensive_data.summary.data|length - 10 }} more objectives (download full report for complete data)
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <div style="height: 300px;">
+                <canvas id="summaryChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Analytics Report Section -->
+    <div class="card" style="margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="margin: 0; color: #2c3e50;">📊 Session Analytics ({{ comprehensive_data.session_analytics.totals.total_sessions }} sessions)</h3>
+            <div style="display: flex; gap: 0.5rem;">
+                <a href="{{ url_for('report_csv', start_date=start_date, end_date=end_date, student_id=student_id, type='session_analytics') }}" 
+                   class="btn btn-secondary btn-small">📄 CSV</a>
+                <a href="{{ url_for('report_pdf', start_date=start_date, end_date=end_date, student_id=student_id, type='session_analytics') }}" 
+                   class="btn btn-secondary btn-small">📑 PDF</a>
+            </div>
+        </div>
+        
+        <!-- Analytics Totals -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: linear-gradient(135deg, #28a745, #20c997); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.session_analytics.totals.total_correct }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Total Correct</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.session_analytics.totals.correct_percentage }}%</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #6f42c1, #9561e2); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.session_analytics.totals.total_partial }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Total Partial</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.session_analytics.totals.partial_percentage }}%</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #fd7e14, #fd9843); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.session_analytics.totals.total_incorrect }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Total Incorrect</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.session_analytics.totals.incorrect_percentage }}%</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #17a2b8, #138496); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.session_analytics.totals.success_rate }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Success Rate</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.session_analytics.totals.success_percentage }}%</div>
+            </div>
+        </div>
+        
+        <!-- Analytics Chart and Table -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+            <div style="height: 300px;">
+                <canvas id="analyticsChart"></canvas>
+            </div>
+            <div style="overflow-x: auto; max-height: 300px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse; background: white; font-size: 0.85rem;">
+                    <thead style="position: sticky; top: 0; background: white;">
+                        <tr style="background: #f8f9fa;">
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Date</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Student</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Success %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for analytics in comprehensive_data.session_analytics.data[:15] %}
+                        <tr style="{% if loop.index0 % 2 == 0 %}background: #f8f9fa;{% endif %}">
+                            <td style="padding: 8px; border: 1px solid #ddd; font-size: 0.8rem;">{{ analytics.date }}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; font-weight: 500;">{{ analytics.student_name }}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #007bff;">{{ analytics.combined_percentage }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Summary Report Section -->
+    <div class="card" style="margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="margin: 0; color: #2c3e50;">📅 Daily Summary ({{ comprehensive_data.daily_summary.totals.total_sessions }} sessions)</h3>
+            <div style="display: flex; gap: 0.5rem;">
+                <a href="{{ url_for('report_csv', start_date=start_date, end_date=end_date, student_id=student_id, type='daily_summary') }}" 
+                   class="btn btn-secondary btn-small">📄 CSV</a>
+                <a href="{{ url_for('report_pdf', start_date=start_date, end_date=end_date, student_id=student_id, type='daily_summary') }}" 
+                   class="btn btn-secondary btn-small">📑 PDF</a>
+            </div>
+        </div>
+        
+        <!-- Daily Totals -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: linear-gradient(135deg, #007bff, #0056b3); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.daily_summary.totals.total_sessions }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Total Sessions</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #28a745, #20c997); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.daily_summary.totals.total_attempts }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Total Attempts</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #6c757d, #5a6268); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.daily_summary.totals.avg_attempts_per_session }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Avg Attempts/Session</div>
+            </div>
+        </div>
+        
+        <!-- Daily Trend Chart -->
+        <div style="height: 300px; margin-bottom: 1rem;">
+            <canvas id="dailyTrendChart"></canvas>
+        </div>
+        
+        <!-- Daily Sessions Table -->
+        <div style="overflow-x: auto; max-height: 300px; overflow-y: auto;">
+            <table style="width: 100%; border-collapse: collapse; background: white; font-size: 0.9rem;">
+                <thead style="position: sticky; top: 0; background: white;">
+                    <tr style="background: #f8f9fa;">
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Date</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Total Attempts</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Goal Instances</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Students Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in comprehensive_data.daily_summary.data %}
+                    <tr style="{% if loop.index0 % 2 == 0 %}background: #f8f9fa;{% endif %}">
+                        <td style="padding: 12px; border: 1px solid #ddd; font-weight: 500;">{{ session.date }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #007bff;">{{ session.total_attempts }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ session.goal_instances }}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">{{ session.students_seen }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="card text-center">
+        <p style="color: #666; padding: 2rem;">No data available for the selected date range and filters.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Initialize Charts
+document.addEventListener('DOMContentLoaded', function() {
+    {% if comprehensive_data %}
+    
+    // Summary Pie Chart
+    const summaryCtx = document.getElementById('summaryChart').getContext('2d');
+    new Chart(summaryCtx, {
+        type: 'pie',
+        data: {
+            labels: {{ comprehensive_data.summary.chart.labels|tojson }},
+            datasets: [{
+                data: {{ comprehensive_data.summary.chart.data|tojson }},
+                backgroundColor: {{ comprehensive_data.summary.chart.colors|tojson }},
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const percentage = {{ comprehensive_data.summary.chart.percentages|tojson }}[context.dataIndex];
+                            return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Analytics Pie Chart
+    const analyticsCtx = document.getElementById('analyticsChart').getContext('2d');
+    new Chart(analyticsCtx, {
+        type: 'doughnut',
+        data: {
+            labels: {{ comprehensive_data.session_analytics.chart.labels|tojson }},
+            datasets: [{
+                data: {{ comprehensive_data.session_analytics.chart.data|tojson }},
+                backgroundColor: {{ comprehensive_data.session_analytics.chart.colors|tojson }},
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const percentage = {{ comprehensive_data.session_analytics.chart.percentages|tojson }}[context.dataIndex];
+                            return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Daily Trend Chart
+    const dailyCtx = document.getElementById('dailyTrendChart').getContext('2d');
+    new Chart(dailyCtx, {
+        type: 'line',
+        data: {
+            labels: {{ comprehensive_data.daily_summary.chart.labels|tojson }},
+            datasets: [{
+                label: 'Total Attempts',
+                data: {{ comprehensive_data.daily_summary.chart.attempts|tojson }},
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                tension: 0.4,
+                fill: true
+            }, {
+                label: 'Students Seen',
+                data: {{ comprehensive_data.daily_summary.chart.students|tojson }},
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                tension: 0.4,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Date'
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Total Attempts'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Students'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                }
+            }
+        }
+    });
+    
+    {% endif %}
+});
+</script>
+{% endblock %}
