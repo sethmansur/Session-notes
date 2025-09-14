@@ -120,7 +120,7 @@
             break-inside: avoid;
             height: 100%;
             display: grid;
-            grid-template-rows: auto 1fr auto; /* name, objectives, notes */
+            grid-template-rows: auto 1fr; /* name, objectives */
             overflow: hidden;
         }
         
@@ -139,11 +139,11 @@
             background: #f0f0f0;
         }
         
-        /* Dynamic sizing for student names */
-        .one-student .student-name { font-size: 14px; }
-        .two-students .student-name { font-size: 12px; }
-        .three-students .student-name { font-size: 10px; }
-        .four-students .student-name, .five-plus-students .student-name { font-size: 9px; }
+        /* Dynamic sizing for student names - 5 points larger than objective text */
+        .one-student .student-name { font-size: 16px; font-weight: bold; }
+        .two-students .student-name { font-size: 14px; font-weight: bold; }
+        .three-students .student-name { font-size: 13px; font-weight: bold; }
+        .four-students .student-name, .five-plus-students .student-name { font-size: 12px; font-weight: bold; }
 
         .objectives-list {
             display: flex;
@@ -190,17 +190,7 @@
                 repeating-linear-gradient(180deg, transparent 0, transparent 0.18in, #bbb 0.18in, #bbb 0.185in);
         }
         
-        /* Add print-specific guidelines that always appear */
-        .objective-text::after {
-            content: "";
-            position: absolute;
-            bottom: 0.3in;
-            left: 0.05in;
-            right: 0.05in;
-            height: 1px;
-            border-bottom: 1px dotted #999;
-            pointer-events: none;
-        }
+        /* Removed dotted line for objectives as requested */
         
         /* Dynamic sizing for objective text - Conservative heights to prevent overflow */
         .one-student .objective-text { 
@@ -226,29 +216,7 @@
 
         /* Removed count box - objective text now has solid border for manual tick marks */
 
-        /* Notes area - Ultra Compact */
-        .notes-area {
-            margin-top: 0.005in;
-            border-top: 1px solid #ccc;
-            padding-top: 0.002in;
-        }
-
-        .notes-label {
-            font-size: 5px;
-            font-weight: bold;
-            margin-bottom: 0.01in;
-        }
-
-        .notes-lines {
-            display: flex;
-            flex-direction: column;
-            gap: 0.01in;
-        }
-
-        .notes-line {
-            border-bottom: 1px solid #ddd;
-            height: 0.04in;
-        }
+        /* Notes section CSS removed as section was removed */
 
         /* Screen-only controls */
         .controls {
@@ -379,14 +347,7 @@
                     
                 </div>
                 
-                <!-- Notes area - Reduced to 2 lines -->
-                <div class="notes-area">
-                    <div class="notes-label">Notes:</div>
-                    <div class="notes-lines">
-                        <div class="notes-line"></div>
-                        <div class="notes-line"></div>
-                    </div>
-                </div>
+                <!-- Notes section removed as requested -->
             </div>
             {% endfor %}
         </div>
