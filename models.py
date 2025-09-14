@@ -259,7 +259,9 @@ class Event(db.Model):
     session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     objective_id = db.Column(db.Integer, db.ForeignKey('objectives.id'), nullable=False)
-    count = db.Column(db.Integer, default=0)
+    count = db.Column(db.Float, default=0)  # Changed to Float to support partial counts (0.5)
+    count2 = db.Column(db.Float, default=0)  # Additional count box 2
+    count3 = db.Column(db.Float, default=0)  # Additional count box 3
     activity = db.Column(db.String(100))
     prompt_level = db.Column(db.String(50))
     notes = db.Column(db.Text)

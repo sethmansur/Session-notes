@@ -181,20 +181,26 @@
         .three-students .objective-text { font-size: 7px; }
         .four-students .objective-text, .five-plus-students .objective-text { font-size: 6px; }
 
-        /* Count Box - Scales with content */
+        /* Count Box - Bold borders for handwritten tick marks */
         .count-box {
-            border: 1px solid #000;
+            border: 3px solid #000;
             background: white;
             margin-left: 0.02in;
             flex-shrink: 0;
             height: 100%;
+            box-sizing: border-box;
+            /* Add a subtle grid pattern for easier handwriting */
+            background-image: 
+                linear-gradient(to right, #f0f0f0 1px, transparent 1px),
+                linear-gradient(to bottom, #f0f0f0 1px, transparent 1px);
+            background-size: 0.1in 0.1in;
         }
         
-        /* Dynamic sizing for count boxes */
-        .one-student .count-box { width: 1.2in; min-height: 0.35in; }
-        .two-students .count-box { width: 1.1in; min-height: 0.25in; }
-        .three-students .count-box { width: 1.0in; min-height: 0.2in; }
-        .four-students .count-box, .five-plus-students .count-box { width: 0.9in; min-height: 0.18in; }
+        /* Dynamic sizing for count boxes - optimized for handwritten tick marks */
+        .one-student .count-box { width: 1.3in; min-height: 0.4in; }
+        .two-students .count-box { width: 1.2in; min-height: 0.3in; }
+        .three-students .count-box { width: 1.1in; min-height: 0.25in; }
+        .four-students .count-box, .five-plus-students .count-box { width: 1.0in; min-height: 0.2in; }
 
         /* Notes area - Ultra Compact */
         .notes-area {

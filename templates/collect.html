@@ -311,6 +311,28 @@
                 continue;
             }
             
+            // Session-wide prompt level selector for this student
+            let promptLevelHtml = `
+                <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px; border: 1px solid #e1e5e9;">
+                    <label style="font-size: 0.85rem; color: #666; display: block; margin-bottom: 0.25rem;">Session Prompt Level:</label>
+                    <select class="prompt-level" id="session-prompt-${selectedStudent.id}" 
+                            onchange="updateSessionPromptLevel(${selectedStudent.id}, this)" 
+                            style="width: 100%; max-width: none;">
+                        <option value="">Select Prompt Level</option>
+                        <option value="Independent">Independent</option>
+                        <option value="Min. Verbal (1-2)">Min. Verbal (1-2)</option>
+                        <option value="Mod. Verbal (3-4)">Mod. Verbal (3-4)</option>
+                        <option value="Max. Verbal (5+)">Max. Verbal (5+)</option>
+                        <option value="Min. Gestural (1-2)">Min. Gestural (1-2)</option>
+                        <option value="Mod. Gestural (3-4)">Mod. Gestural (3-4)</option>
+                        <option value="Max. Gestural (5+)">Max. Gestural (5+)</option>
+                        <option value="Min. Visual (1-2)">Min. Visual (1-2)</option>
+                        <option value="Mod. Visual (3-4)">Mod. Visual (3-4)</option>
+                        <option value="Max. Visual (5+)">Max. Visual (5+)</option>
+                    </select>
+                </div>
+            `;
+
             let objectivesHtml = '';
             for (const objective of studentData.objectives) {
                 objectivesHtml += `
@@ -328,20 +350,6 @@
                                 <button class="plus-btn" onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)">+</button>
                                 <button class="pt-btn" onclick="incrementPartialCount(${selectedStudent.id}, ${objective.id}, this)">+pt</button>
                             </div>
-                            <select class="prompt-level" id="prompt-${selectedStudent.id}-${objective.id}" 
-                                    onchange="updatePromptLevel(${selectedStudent.id}, ${objective.id}, this)">
-                                <option value="">Prompt Level</option>
-                                <option value="Independent">Independent</option>
-                                <option value="Min. Verbal (1-2)">Min. Verbal (1-2)</option>
-                                <option value="Mod. Verbal (3-4)">Mod. Verbal (3-4)</option>
-                                <option value="Max. Verbal (5+)">Max. Verbal (5+)</option>
-                                <option value="Min. Gestural (1-2)">Min. Gestural (1-2)</option>
-                                <option value="Mod. Gestural (3-4)">Mod. Gestural (3-4)</option>
-                                <option value="Max. Gestural (5+)">Max. Gestural (5+)</option>
-                                <option value="Min. Visual (1-2)">Min. Visual (1-2)</option>
-                                <option value="Mod. Visual (3-4)">Mod. Visual (3-4)</option>
-                                <option value="Max. Visual (5+)">Max. Visual (5+)</option>
-                            </select>
                         </div>
                     </div>
                 `;
@@ -349,6 +357,7 @@
             
             card.innerHTML = `
                 <div class="student-name">${selectedStudent.name}</div>
+                ${promptLevelHtml}
                 ${objectivesHtml}
             `;
             
@@ -405,7 +414,7 @@
             const result = await response.json();
             
             if (result.counts) {
-                // Update count displays
+                // Update main count displays
                 Object.entries(result.counts).forEach(([key, count]) => {
                     const countElement = document.getElementById(`count-${key}`);
                     if (countElement) {
@@ -413,12 +422,42 @@
                     }
                 });
                 
-                // Update prompt levels if available
+                // Update count2 displays
+                if (result.counts2) {
+                    Object.entries(result.counts2).forEach(([key, count]) => {
+                        const countElement = document.getElementById(`count2-${key}`);
+                        if (countElement) {
+                            countElement.value = count;
+                        }
+                    });
+                }
+                
+                // Update count3 displays
+                if (result.counts3) {
+                    Object.entries(result.counts3).forEach(([key, count]) => {
+                        const countElement = document.getElementById(`count3-${key}`);
+                        if (countElement) {
+                            countElement.value = count;
+                        }
+                    });
+                }
+                
+                // Update session prompt levels if available
                 if (result.prompt_levels) {
+                    // Get unique prompt levels by student
+                    const studentPromptLevels = {};
                     Object.entries(result.prompt_levels).forEach(([key, promptLevel]) => {
-                        const promptElement = document.getElementById(`prompt-${key}`);
-                        if (promptElement && promptLevel) {
-                            promptElement.value = promptLevel;
+                        const [studentId] = key.split('-');
+                        if (promptLevel && !studentPromptLevels[studentId]) {
+                            studentPromptLevels[studentId] = promptLevel;
+                        }
+                    });
+                    
+                    // Update session-wide prompt level selectors
+                    Object.entries(studentPromptLevels).forEach(([studentId, promptLevel]) => {
+                        const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
+                        if (sessionPromptElement && promptLevel) {
+                            sessionPromptElement.value = promptLevel;
                         }
                     });
                 }
@@ -429,7 +468,7 @@
     }
     async function incrementCount(studentId, objectiveId, btn) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
-        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
         
         // Optimistic update for instant feedback
         const currentCount = parseInt(countElement.value) || 0;
@@ -441,12 +480,12 @@
             countElement.style.borderColor = '#e1e5e9';
         }, 200);
         
-        await updateCountOnServer(studentId, objectiveId, currentCount + 1, promptElement.value);
+        await updateCountOnServer(studentId, objectiveId, currentCount + 1, sessionPromptElement ? sessionPromptElement.value : '');
     }
     
     async function incrementPartialCount(studentId, objectiveId, btn) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
-        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
         
         // Optimistic update for instant feedback - add 0.5 for partial credit
         const currentCount = parseFloat(countElement.value) || 0;
@@ -459,11 +498,11 @@
             countElement.style.borderColor = '#e1e5e9';
         }, 200);
         
-        await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value);
+        await updateCountOnServer(studentId, objectiveId, newCount, sessionPromptElement ? sessionPromptElement.value : '');
     }
     async function decrementCount(studentId, objectiveId, btn) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
-        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
         const currentCount = parseInt(countElement.value) || 0;
         
         if (currentCount <= 0) {
@@ -479,13 +518,13 @@
             countElement.style.borderColor = '#e1e5e9';
         }, 200);
         
-        await updateCountOnServer(studentId, objectiveId, currentCount - 1, promptElement.value);
+        await updateCountOnServer(studentId, objectiveId, currentCount - 1, sessionPromptElement ? sessionPromptElement.value : '');
     }
     
     // Handle manual count input changes
     async function updateCountManually(studentId, objectiveId, inputElement) {
         const newCount = parseFloat(inputElement.value) || 0;
-        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
         
         // Ensure non-negative values
         if (newCount < 0) {
@@ -493,13 +532,13 @@
             return;
         }
         
-        await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value);
+        await updateCountOnServer(studentId, objectiveId, newCount, sessionPromptElement ? sessionPromptElement.value : '');
     }
     
     // Handle manual count input changes for additional boxes
     async function updateCountManually2(studentId, objectiveId, inputElement) {
         const newCount = parseFloat(inputElement.value) || 0;
-        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
         
         // Ensure non-negative values
         if (newCount < 0) {
@@ -508,12 +547,12 @@
         }
         
         // Store as count2 in the database
-        await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value, 'count2');
+        await updateCountOnServer(studentId, objectiveId, newCount, sessionPromptElement ? sessionPromptElement.value : '', 'count2');
     }
     
     async function updateCountManually3(studentId, objectiveId, inputElement) {
         const newCount = parseFloat(inputElement.value) || 0;
-        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
         
         // Ensure non-negative values
         if (newCount < 0) {
@@ -522,13 +561,32 @@
         }
         
         // Store as count3 in the database
-        await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value, 'count3');
+        await updateCountOnServer(studentId, objectiveId, newCount, sessionPromptElement ? sessionPromptElement.value : '', 'count3');
     }
     
-    // Handle prompt level changes
+    // Handle session-wide prompt level changes  
+    async function updateSessionPromptLevel(studentId, selectElement) {
+        const promptLevel = selectElement.value;
+        
+        // Update prompt level for all objectives for this student
+        const studentObjectives = studentsData.find(s => s.id == studentId)?.objectives || [];
+        
+        for (const objective of studentObjectives) {
+            const countElement = document.getElementById(`count-${studentId}-${objective.id}`);
+            const currentCount = parseFloat(countElement?.value) || 0;
+            
+            if (currentCount > 0 || promptLevel) {
+                await updateCountOnServer(studentId, objective.id, currentCount, promptLevel);
+            }
+        }
+        
+        showMessage('Prompt level updated for all objectives', 'success');
+    }
+    
+    // Handle individual objective prompt level changes (legacy support)
     async function updatePromptLevel(studentId, objectiveId, selectElement) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
-        const currentCount = parseInt(countElement.value) || 0;
+        const currentCount = parseFloat(countElement.value) || 0;
         
         await updateCountOnServer(studentId, objectiveId, currentCount, selectElement.value);
     }
@@ -537,20 +595,32 @@
     async function updateCountOnServer(studentId, objectiveId, count, promptLevel = '', countField = 'count') {
         try {
             const updateRoute = isDirectAccess ? '/direct/event/update' : '/app/event/update';
+            
+            // Build the request body with the correct count field
+            const requestBody = {
+                date: sessionDate,
+                student_id: studentId,
+                objective_id: objectiveId,
+                prompt_level: promptLevel,
+                activity: '',
+                count_field: countField
+            };
+            
+            // Send the count value in the correct field based on countField
+            if (countField === 'count2') {
+                requestBody.count2 = count;
+            } else if (countField === 'count3') {
+                requestBody.count3 = count;
+            } else {
+                requestBody.count = count;
+            }
+            
             const response = await fetch(updateRoute, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    date: sessionDate,
-                    student_id: studentId,
-                    objective_id: objectiveId,
-                    count: count,
-                    prompt_level: promptLevel,
-                    activity: '',
-                    count_field: countField
-                })
+                body: JSON.stringify(requestBody)
             });
             
             const result = await response.json();
@@ -642,11 +712,11 @@
             
             if (result.success) {
                 // Reset all count displays to 0
-                document.querySelectorAll('[id^="count-"]').forEach(countElement => {
+                document.querySelectorAll('[id^="count-"], [id^="count2-"], [id^="count3-"]').forEach(countElement => {
                     countElement.value = '0';
                 });
                 // Reset all prompt levels
-                document.querySelectorAll('[id^="prompt-"]').forEach(promptElement => {
+                document.querySelectorAll('[id^="prompt-"], [id^="session-prompt-"]').forEach(promptElement => {
                     promptElement.value = '';
                 });
                 showMessage('Session reset successfully!', 'success');
