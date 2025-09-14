@@ -149,7 +149,16 @@
             display: flex;
             flex-direction: column;
             gap: 0.005in;
-            overflow: hidden; /* Prevent overflow beyond panel */
+        }
+        
+        /* Allow overflow handling in print mode */
+        @media print {
+            .objectives-list {
+                overflow: visible;
+            }
+            .student-panel {
+                overflow: visible;
+            }
         }
 
         .objective-row {
@@ -161,28 +170,59 @@
             flex: 1;
         }
         
-        /* Dynamic sizing for objective rows */
-        .one-student .objective-row { min-height: 0.4in; }
-        .two-students .objective-row { min-height: 0.3in; }
+        /* Dynamic sizing for objective rows - Match text box sizing */
+        .one-student .objective-row { min-height: 0.5in; }
+        .two-students .objective-row { min-height: 0.35in; }
         .three-students .objective-row { min-height: 0.25in; }
         .four-students .objective-row, .five-plus-students .objective-row { min-height: 0.2in; }
 
         .objective-text {
             flex: 1;
-            padding: 0.05in;
-            line-height: 1.1;
+            padding: 0.1in;
+            line-height: 1.4;
             word-wrap: break-word;
             border: 2px solid #000;
             background: white;
-            min-height: 0.3in;
+            position: relative;
             /* Give clinicians ample space for manual tick marks */
+            /* Add print-friendly guidelines using repeating pattern */
+            background-image: 
+                repeating-linear-gradient(180deg, transparent 0, transparent 0.18in, #bbb 0.18in, #bbb 0.185in);
         }
         
-        /* Dynamic font sizing for objective text */
-        .one-student .objective-text { font-size: 10px; }
-        .two-students .objective-text { font-size: 8px; }
-        .three-students .objective-text { font-size: 7px; }
-        .four-students .objective-text, .five-plus-students .objective-text { font-size: 6px; }
+        /* Add print-specific guidelines that always appear */
+        .objective-text::after {
+            content: "";
+            position: absolute;
+            bottom: 0.3in;
+            left: 0.05in;
+            right: 0.05in;
+            height: 1px;
+            border-bottom: 1px dotted #999;
+            pointer-events: none;
+        }
+        
+        /* Dynamic sizing for objective text - Conservative heights to prevent overflow */
+        .one-student .objective-text { 
+            min-height: 0.5in; 
+            font-size: 11px; 
+            padding-bottom: 0.15in; 
+        }
+        .two-students .objective-text { 
+            min-height: 0.35in; 
+            font-size: 9px; 
+            padding-bottom: 0.1in; 
+        }
+        .three-students .objective-text { 
+            min-height: 0.25in; 
+            font-size: 8px; 
+            padding-bottom: 0.08in; 
+        }
+        .four-students .objective-text, .five-plus-students .objective-text { 
+            min-height: 0.2in; 
+            font-size: 7px; 
+            padding-bottom: 0.05in; 
+        }
 
         /* Removed count box - objective text now has solid border for manual tick marks */
 
@@ -264,13 +304,23 @@
                 background: transparent !important;
             }
             
-            /* Force single page for 4 or fewer students */
+            /* Allow natural page breaks to prevent clipping */
             .page {
-                page-break-after: avoid !important;
+                page-break-after: auto;
             }
             
-            .page:last-child {
-                page-break-after: auto;
+            /* Use flexible grid in print to accommodate content */
+            .students-grid.one-student {
+                grid-template-rows: auto;
+            }
+            .students-grid.two-students {
+                grid-template-rows: auto auto;
+            }
+            .students-grid.three-students {
+                grid-template-rows: auto auto auto;
+            }
+            .students-grid.four-students {
+                grid-template-rows: auto auto auto auto;
             }
         }
     </style>
