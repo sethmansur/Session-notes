@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .org-admin-header {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
+    .org-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .stat-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #28a745;
+        margin-bottom: 0.5rem;
+    }
+    .stat-label {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .org-actions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+    }
+    .action-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+        transition: transform 0.2s;
+    }
+    .action-card:hover {
+        transform: translateY(-2px);
+    }
+    .action-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+    .btn-org-admin {
+        background: #28a745;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s;
+    }
+    .btn-org-admin:hover {
+        background: #218838;
+        text-decoration: none;
+        color: white;
+    }
+</style>
+
+<div class="org-admin-header">
+    <h1>🏥 {{ organization.name }} Admin Dashboard</h1>
+    <p>Manage users and settings for your organization</p>
+</div>
+
+<div class="org-stats">
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total_members }}</div>
+        <div class="stat-label">Total Members</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.admin_members }}</div>
+        <div class="stat-label">Admin Members</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total_students }}</div>
+        <div class="stat-label">Students</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total_sessions }}</div>
+        <div class="stat-label">Total Sessions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.recent_sessions }}</div>
+        <div class="stat-label">Recent Sessions (30 days)</div>
+    </div>
+</div>
+
+<div class="org-actions">
+    <div class="action-card">
+        <div class="action-icon">👥</div>
+        <h3>Manage Users</h3>
+        <p>View, add, remove, and manage user roles within your organization</p>
+        <a href="{{ url_for('org_admin_users', org_id=organization.id) }}" class="btn-org-admin">
+            Manage Users
+        </a>
+    </div>
+    
+    <div class="action-card">
+        <div class="action-icon">📊</div>
+        <h3>View Reports</h3>
+        <p>Access therapy session reports and analytics for your organization</p>
+        <a href="{{ url_for('report') }}" class="btn-org-admin">
+            View Reports
+        </a>
+    </div>
+    
+    <div class="action-card">
+        <div class="action-icon">👨‍🎓</div>
+        <h3>Manage Students</h3>
+        <p>View and manage students in your organization</p>
+        <a href="{{ url_for('students') }}" class="btn-org-admin">
+            Manage Students
+        </a>
+    </div>
+    
+    <div class="action-card">
+        <div class="action-icon">⚙️</div>
+        <h3>Organization Settings</h3>
+        <p>Configure organization preferences and settings</p>
+        <a href="{{ url_for('profile') }}" class="btn-org-admin">
+            Settings
+        </a>
+    </div>
+</div>
+
+{% if current_user.is_super_admin() %}
+<div style="margin-top: 2rem; padding: 1rem; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+    <strong>Super Admin Access:</strong> You also have access to the <a href="{{ url_for('admin_dashboard') }}">Global Admin Dashboard</a>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -190,10 +190,11 @@
     <h3 style="margin: 0 0 1rem 0; color: #333;">🔧 Admin Actions</h3>
     
     <form method="POST" action="/admin/users/{{ user.id }}/update">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        {{ csrf_token() }}
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label>Subscription Status:</label>
-                <select name="subscription_status">
+                <select name="subscription_status" class="form-control">
                     <option value="trial" {% if user.subscription_status == 'trial' %}selected{% endif %}>Trial</option>
                     <option value="active" {% if user.subscription_status == 'active' %}selected{% endif %}>Active</option>
                     <option value="past_due" {% if user.subscription_status == 'past_due' %}selected{% endif %}>Past Due</option>
@@ -203,10 +204,18 @@
             
             <div class="form-group">
                 <label>Plan Type:</label>
-                <select name="plan_type">
+                <select name="plan_type" class="form-control">
                     <option value="freemium" {% if user.plan_type == 'freemium' %}selected{% endif %}>Freemium</option>
                     <option value="individual" {% if user.plan_type == 'individual' %}selected{% endif %}>Individual</option>
                     <option value="team" {% if user.plan_type == 'team' %}selected{% endif %}>Team</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Admin Status:</label>
+                <select name="is_admin" class="form-control">
+                    <option value="false" {% if not user.is_admin %}selected{% endif %}>Regular User</option>
+                    <option value="true" {% if user.is_admin %}selected{% endif %}>Super Admin</option>
                 </select>
             </div>
         </div>

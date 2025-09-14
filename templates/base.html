@@ -267,6 +267,33 @@
         <a href="/app/report" class="nav-item {% if request.endpoint == 'report' %}active{% endif %}">
             Reports
         </a>
+        
+        {% if current_user.is_authenticated %}
+            {% if current_user.is_super_admin() %}
+                <a href="/admin" class="nav-item {% if request.endpoint in ['admin_dashboard', 'admin_users', 'admin_user_detail'] %}active{% endif %}">
+                    🛡️<br>Super Admin
+                </a>
+            {% endif %}
+            
+            {% set admin_orgs = current_user.admin_organizations() %}
+            {% if admin_orgs and not current_user.is_super_admin() %}
+                {% if admin_orgs|length == 1 %}
+                    <a href="/org/{{ admin_orgs[0] }}/admin" class="nav-item {% if request.endpoint.startswith('org_admin') %}active{% endif %}">
+                        🏥<br>Admin
+                    </a>
+                {% else %}
+                    <div class="nav-item nav-dropdown">
+                        🏥<br>Admin
+                        <div class="dropdown-content">
+                            {% for org_id in admin_orgs %}
+                                <a href="/org/{{ org_id }}/admin">Org {{ org_id }}</a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+            {% endif %}
+        {% endif %}
+        
         <a href="/app/profile" class="nav-item {% if request.endpoint == 'user_profile' %}active{% endif %}">
             👤<br>Profile
         </a>

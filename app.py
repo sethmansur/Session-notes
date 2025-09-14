@@ -4,6 +4,7 @@ import re
 from datetime import datetime, date, timedelta
 from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file, session, make_response, flash, current_app
 from flask_login import current_user
+from flask_wtf.csrf import CSRFProtect
 import csv
 import io
 import openpyxl
@@ -16,6 +17,9 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Initialize Flask app
 app = Flask(__name__)
+
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
 
 # Set secret key - require secure key in production
 if os.environ.get("REPLIT_DEPLOYMENT") == "1":
@@ -73,7 +77,7 @@ def file_too_large(error):
 
 # Import database and auth after app creation
 from models import db, User, Organization, Membership, Student, Objective, Session, Event, ObjectiveItem, EventSelection
-from auth import init_auth, require_subscription, admin_required
+from auth import init_auth, require_subscription, admin_required, super_admin_required, org_admin_required
 from flask_login import login_required, current_user
 from functools import wraps
 
@@ -320,7 +324,7 @@ def upgrade():
 
 # Admin Dashboard Routes (PROTECTED)
 @app.route('/admin')
-@admin_required
+@super_admin_required
 def admin_dashboard():
     """Internal user management dashboard for backend subscription management"""
     from sqlalchemy import func
@@ -350,7 +354,7 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', stats=stats)
 
 @app.route('/admin/users')
-@admin_required
+@super_admin_required
 def admin_users():
     """User list with search and filtering"""
     search = request.args.get('search', '')
@@ -387,7 +391,7 @@ def admin_users():
                          plan_filter=plan_filter)
 
 @app.route('/admin/users/<user_id>')
-@admin_required
+@super_admin_required
 def admin_user_detail(user_id):
     """Individual user management page"""
     user = User.query.get_or_404(user_id)
@@ -411,30 +415,194 @@ def admin_user_detail(user_id):
     return render_template('admin_user_detail.html', user=user, activity_stats=activity_stats)
 
 @app.route('/admin/users/<user_id>/update', methods=['POST'])
-@admin_required
+@super_admin_required
 def admin_update_user(user_id):
-    """Update user subscription status and plan"""
+    """Update user subscription status, plan, and admin privileges"""
     user = User.query.get_or_404(user_id)
     
     new_status = request.form.get('subscription_status')
     new_plan = request.form.get('plan_type')
+    new_admin_status = request.form.get('is_admin')
     extend_trial = request.form.get('extend_trial')
     
     if new_status and new_status != user.subscription_status:
         user.subscription_status = new_status
+        flash(f'Subscription status updated to {new_status}', 'success')
         
     if new_plan and new_plan != user.plan_type:
         user.plan_type = new_plan
+        flash(f'Plan type updated to {new_plan}', 'success')
+        
+    if new_admin_status is not None:
+        new_admin_bool = new_admin_status.lower() == 'true'
+        if new_admin_bool != user.is_admin:
+            user.is_admin = new_admin_bool
+            admin_status = 'Super Admin' if new_admin_bool else 'Regular User'
+            flash(f'Admin status updated to {admin_status}', 'success')
         
     if extend_trial:
         # Extend trial by 7 days
         user.trial_start_date = datetime.now()
         user.subscription_status = 'trial'
+        flash('Trial extended by 7 days', 'success')
     
     user.updated_at = datetime.now()
     db.session.commit()
     
     return redirect(url_for('admin_user_detail', user_id=user_id))
+
+# Organization Admin Panel Routes
+@app.route('/org/<int:org_id>/admin')
+@org_admin_required()
+def org_admin_dashboard(org_id):
+    """Organization-level admin dashboard"""
+    organization = Organization.query.get_or_404(org_id)
+    
+    # Get organization statistics
+    total_members = Membership.query.filter_by(organization_id=org_id).count()
+    admin_members = Membership.query.filter_by(organization_id=org_id).filter(
+        Membership.role.in_(['admin', 'owner'])).count()
+    total_students = Student.query.filter_by(organization_id=org_id).count()
+    total_sessions = Session.query.filter_by(organization_id=org_id).count()
+    
+    # Recent activity (last 30 days)
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    recent_sessions = Session.query.filter(
+        Session.organization_id == org_id,
+        Session.date >= thirty_days_ago.date()
+    ).count()
+    
+    stats = {
+        'total_members': total_members,
+        'admin_members': admin_members,
+        'total_students': total_students,
+        'total_sessions': total_sessions,
+        'recent_sessions': recent_sessions
+    }
+    
+    return render_template('org_admin_dashboard.html', 
+                         organization=organization, stats=stats)
+
+@app.route('/org/<int:org_id>/admin/users')
+@org_admin_required()
+def org_admin_users(org_id):
+    """Organization user management"""
+    organization = Organization.query.get_or_404(org_id)
+    search = request.args.get('search', '')
+    role_filter = request.args.get('role', '')
+    page = int(request.args.get('page', 1))
+    per_page = 25
+    
+    # Get users with their memberships in this organization
+    query = db.session.query(User, Membership).join(
+        Membership, User.id == Membership.user_id
+    ).filter(Membership.organization_id == org_id)
+    
+    # Apply filters
+    if search:
+        from sqlalchemy import or_
+        query = query.filter(or_(
+            User.email.contains(search),
+            User.first_name.contains(search),
+            User.last_name.contains(search)
+        ))
+    
+    if role_filter:
+        query = query.filter(Membership.role == role_filter)
+    
+    # Paginate results
+    users_memberships = query.order_by(User.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False)
+    
+    return render_template('org_admin_users.html',
+                         organization=organization,
+                         users_memberships=users_memberships,
+                         search=search,
+                         role_filter=role_filter)
+
+@app.route('/org/<int:org_id>/admin/users/<user_id>')
+@org_admin_required()
+def org_admin_user_detail(org_id, user_id):
+    """Individual user management within organization"""
+    organization = Organization.query.get_or_404(org_id)
+    user = User.query.get_or_404(user_id)
+    
+    # Verify user is member of this organization
+    membership = Membership.query.filter_by(
+        user_id=user_id, organization_id=org_id).first_or_404()
+    
+    # Get user activity stats within this organization
+    total_students = Student.query.filter_by(organization_id=org_id).count()
+    user_sessions = Session.query.filter_by(organization_id=org_id).count()
+    
+    activity_stats = {
+        'total_students': total_students,
+        'user_sessions': user_sessions,
+        'last_login': user.updated_at,
+        'member_since': membership.created_at,
+        'current_role': membership.role
+    }
+    
+    return render_template('org_admin_user_detail.html',
+                         organization=organization,
+                         user=user,
+                         membership=membership,
+                         activity_stats=activity_stats)
+
+@app.route('/org/<int:org_id>/admin/users/<user_id>/update-role', methods=['POST'])
+@org_admin_required()
+def org_admin_update_user_role(org_id, user_id):
+    """Update user role within organization"""
+    organization = Organization.query.get_or_404(org_id)
+    user = User.query.get_or_404(user_id)
+    membership = Membership.query.filter_by(
+        user_id=user_id, organization_id=org_id).first_or_404()
+    
+    new_role = request.form.get('role')
+    valid_roles = ['owner', 'admin', 'clinician', 'viewer']
+    
+    if new_role and new_role in valid_roles:
+        # Prevent removing the last owner
+        if membership.role == 'owner' and new_role != 'owner':
+            owner_count = Membership.query.filter_by(
+                organization_id=org_id, role='owner').count()
+            if owner_count <= 1:
+                flash('Cannot remove the last owner from the organization.', 'error')
+                return redirect(url_for('org_admin_user_detail', 
+                                      org_id=org_id, user_id=user_id))
+        
+        membership.role = new_role
+        membership.updated_at = datetime.now()
+        db.session.commit()
+        
+        flash(f'User role updated to {new_role}.', 'success')
+    else:
+        flash('Invalid role specified.', 'error')
+    
+    return redirect(url_for('org_admin_user_detail', org_id=org_id, user_id=user_id))
+
+@app.route('/org/<int:org_id>/admin/users/<user_id>/remove', methods=['POST'])
+@org_admin_required()
+def org_admin_remove_user(org_id, user_id):
+    """Remove user from organization"""
+    organization = Organization.query.get_or_404(org_id)
+    user = User.query.get_or_404(user_id)
+    membership = Membership.query.filter_by(
+        user_id=user_id, organization_id=org_id).first_or_404()
+    
+    # Prevent removing the last owner
+    if membership.role == 'owner':
+        owner_count = Membership.query.filter_by(
+            organization_id=org_id, role='owner').count()
+        if owner_count <= 1:
+            flash('Cannot remove the last owner from the organization.', 'error')
+            return redirect(url_for('org_admin_users', org_id=org_id))
+    
+    db.session.delete(membership)
+    db.session.commit()
+    
+    flash(f'User {user.first_name} {user.last_name} removed from organization.', 'success')
+    return redirect(url_for('org_admin_users', org_id=org_id))
 
 # GHL Webhook endpoint for lead integration
 @app.route('/webhook/ghl-leads', methods=['POST'])

@@ -315,7 +315,7 @@ def require_subscription(f):
     return decorated_function
 
 def admin_required(f):
-    """Decorator to require admin access"""
+    """Decorator to require admin access - DEPRECATED, use super_admin_required instead"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Bypass authentication if AUTH_DISABLED=1
@@ -337,6 +337,73 @@ def admin_required(f):
         
         return f(*args, **kwargs)
     return decorated_function
+
+def super_admin_required(f):
+    """Decorator to require super admin access (global admin)"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Bypass authentication if AUTH_DISABLED=1
+        if os.environ.get('AUTH_DISABLED') == '1':
+            return f(*args, **kwargs)
+        
+        # First require login
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login'))
+        
+        # Check if user has active subscription
+        if not current_user.has_active_subscription():
+            return redirect(url_for('upgrade'))
+            
+        # Check if user is super admin
+        if not getattr(current_user, 'is_admin', False):
+            from flask import abort
+            abort(403)  # Forbidden access
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+def org_admin_required(extract_org_id=None):
+    """Decorator factory to require organization admin access"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Bypass authentication if AUTH_DISABLED=1
+            if os.environ.get('AUTH_DISABLED') == '1':
+                return f(*args, **kwargs)
+            
+            # First require login
+            if not current_user.is_authenticated:
+                return redirect(url_for('auth.login'))
+            
+            # Check if user has active subscription
+            if not current_user.has_active_subscription():
+                return redirect(url_for('upgrade'))
+            
+            # Super admins have access to everything
+            if getattr(current_user, 'is_admin', False):
+                return f(*args, **kwargs)
+            
+            # Extract organization ID
+            org_id = None
+            if extract_org_id:
+                org_id = extract_org_id(**kwargs)
+            elif 'org_id' in kwargs:
+                org_id = kwargs['org_id']
+            elif 'organization_id' in kwargs:
+                org_id = kwargs['organization_id']
+            
+            if not org_id:
+                from flask import abort
+                abort(400)  # Bad request - no org ID found
+            
+            # Check if user is admin of this organization
+            if not current_user.is_org_admin(org_id):
+                from flask import abort
+                abort(403)  # Forbidden access
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 def init_auth(app):
     """Initialize authentication with Flask app"""

@@ -113,6 +113,46 @@ class User(UserMixin, db.Model):
         current_count = Objective.query.filter_by(student_id=student_id).count()
         return current_count < objective_limit
     
+    # Admin access control methods
+    def is_super_admin(self):
+        """Check if user is a super admin (global admin)"""
+        return self.is_admin
+    
+    def organizations_for_role(self, roles):
+        """Get organizations where user has specified roles"""
+        if isinstance(roles, str):
+            roles = [roles]
+        return [m.organization_id for m in self.memberships if m.role in roles]
+    
+    def admin_organizations(self):
+        """Get organizations where user is admin or owner"""
+        return self.organizations_for_role(['admin', 'owner'])
+    
+    def is_org_admin(self, organization_id):
+        """Check if user is admin or owner of specified organization"""
+        # Super admins have access to everything
+        if self.is_super_admin():
+            return True
+        # Check if user has admin or owner role in this organization
+        return organization_id in self.admin_organizations()
+    
+    def has_org_role(self, organization_id, roles):
+        """Check if user has any of the specified roles in organization"""
+        if isinstance(roles, str):
+            roles = [roles]
+        # Super admins have access to everything
+        if self.is_super_admin():
+            return True
+        # Check membership roles
+        for membership in self.memberships:
+            if membership.organization_id == organization_id and membership.role in roles:
+                return True
+        return False
+    
+    def can_manage_users_in_org(self, organization_id):
+        """Check if user can manage other users in the organization"""
+        return self.is_org_admin(organization_id)
+    
     # Password authentication methods
     def set_password(self, password):
         """Hash and set password"""
