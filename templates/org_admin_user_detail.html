@@ -137,7 +137,7 @@
     <h3>Manage User Role</h3>
     
     <form method="POST" action="{{ url_for('org_admin_update_user_role', org_id=organization.id, user_id=user.id) }}">
-        {{ csrf_token() }}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div style="margin-bottom: 1rem;">
             <label for="role">Change Role:</label>
             <select id="role" name="role" class="form-control" style="width: 200px; display: inline-block; margin-left: 1rem;">
@@ -181,7 +181,7 @@
         <form method="POST" action="{{ url_for('org_admin_remove_user', org_id=organization.id, user_id=user.id) }}" 
               style="margin-top: 1rem;" 
               onsubmit="return confirm('Are you sure you want to remove {{ user.first_name }} {{ user.last_name or '' }} from {{ organization.name }}? This action cannot be undone.')">
-            {{ csrf_token() }}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <button type="submit" class="btn btn-danger">
                 Remove User from Organization
             </button>

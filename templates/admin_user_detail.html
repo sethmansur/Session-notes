@@ -190,7 +190,7 @@
     <h3 style="margin: 0 0 1rem 0; color: #333;">🔧 Admin Actions</h3>
     
     <form method="POST" action="/admin/users/{{ user.id }}/update">
-        {{ csrf_token() }}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label>Subscription Status:</label>
