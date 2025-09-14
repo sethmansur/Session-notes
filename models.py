@@ -181,7 +181,7 @@ class Membership(db.Model):
     __tablename__ = 'memberships'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'owner', 'admin', 'clinician', 'viewer'
     

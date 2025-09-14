@@ -63,6 +63,12 @@
         gap: 0.5rem;
         flex-wrap: wrap;
     }
+    .plus-buttons-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+    }
     .count-input {
         font-size: 1.2rem;
         font-weight: bold;
@@ -116,6 +122,31 @@
     .plus-btn:active {
         transform: scale(0.95);
         background: #1e7e34;
+    }
+    .pt-btn {
+        width: 40px;
+        height: 25px;
+        border: none;
+        border-radius: 12px;
+        background: #6f42c1;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-top: 0.25rem;
+    }
+    .pt-btn:hover {
+        background: #5a2d91;
+        transform: scale(1.05);
+    }
+    .pt-btn:active {
+        transform: scale(0.95);
+        background: #4c1f78;
     }
     .minus-btn {
         width: 30px;
@@ -286,10 +317,17 @@
                     <div class="objective-row">
                         <div class="objective-text">${objective.text}</div>
                         <div class="count-controls">
-                            <button class="minus-btn" onclick="decrementCount(${selectedStudent.id}, ${objective.id}, this)">−</button>
+                            <button class="minus-btn" onclick="decrementCount(${selectedStudent.id}, ${objective.id}, this)">✕</button>
                             <input type="number" class="count-input" id="count-${selectedStudent.id}-${objective.id}" value="0" min="0" 
                                    onchange="updateCountManually(${selectedStudent.id}, ${objective.id}, this)">
-                            <button class="plus-btn" onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)">+</button>
+                            <input type="number" class="count-input" id="count2-${selectedStudent.id}-${objective.id}" value="0" min="0" 
+                                   onchange="updateCountManually2(${selectedStudent.id}, ${objective.id}, this)">
+                            <input type="number" class="count-input" id="count3-${selectedStudent.id}-${objective.id}" value="0" min="0" 
+                                   onchange="updateCountManually3(${selectedStudent.id}, ${objective.id}, this)">
+                            <div class="plus-buttons-container">
+                                <button class="plus-btn" onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)">+</button>
+                                <button class="pt-btn" onclick="incrementPartialCount(${selectedStudent.id}, ${objective.id}, this)">+pt</button>
+                            </div>
                             <select class="prompt-level" id="prompt-${selectedStudent.id}-${objective.id}" 
                                     onchange="updatePromptLevel(${selectedStudent.id}, ${objective.id}, this)">
                                 <option value="">Prompt Level</option>
@@ -405,6 +443,24 @@
         
         await updateCountOnServer(studentId, objectiveId, currentCount + 1, promptElement.value);
     }
+    
+    async function incrementPartialCount(studentId, objectiveId, btn) {
+        const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
+        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        
+        // Optimistic update for instant feedback - add 0.5 for partial credit
+        const currentCount = parseFloat(countElement.value) || 0;
+        const newCount = Math.round((currentCount + 0.5) * 2) / 2; // Round to nearest 0.5
+        countElement.value = newCount;
+        countElement.style.transform = 'scale(1.2)';
+        countElement.style.borderColor = '#6f42c1';
+        setTimeout(() => {
+            countElement.style.transform = 'scale(1)';
+            countElement.style.borderColor = '#e1e5e9';
+        }, 200);
+        
+        await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value);
+    }
     async function decrementCount(studentId, objectiveId, btn) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
         const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
@@ -428,7 +484,7 @@
     
     // Handle manual count input changes
     async function updateCountManually(studentId, objectiveId, inputElement) {
-        const newCount = parseInt(inputElement.value) || 0;
+        const newCount = parseFloat(inputElement.value) || 0;
         const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
         
         // Ensure non-negative values
@@ -440,6 +496,35 @@
         await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value);
     }
     
+    // Handle manual count input changes for additional boxes
+    async function updateCountManually2(studentId, objectiveId, inputElement) {
+        const newCount = parseFloat(inputElement.value) || 0;
+        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        
+        // Ensure non-negative values
+        if (newCount < 0) {
+            inputElement.value = 0;
+            return;
+        }
+        
+        // Store as count2 in the database
+        await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value, 'count2');
+    }
+    
+    async function updateCountManually3(studentId, objectiveId, inputElement) {
+        const newCount = parseFloat(inputElement.value) || 0;
+        const promptElement = document.getElementById(`prompt-${studentId}-${objectiveId}`);
+        
+        // Ensure non-negative values
+        if (newCount < 0) {
+            inputElement.value = 0;
+            return;
+        }
+        
+        // Store as count3 in the database
+        await updateCountOnServer(studentId, objectiveId, newCount, promptElement.value, 'count3');
+    }
+    
     // Handle prompt level changes
     async function updatePromptLevel(studentId, objectiveId, selectElement) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
@@ -449,7 +534,7 @@
     }
     
     // Shared function to update count and prompt level on server
-    async function updateCountOnServer(studentId, objectiveId, count, promptLevel = '') {
+    async function updateCountOnServer(studentId, objectiveId, count, promptLevel = '', countField = 'count') {
         try {
             const updateRoute = isDirectAccess ? '/direct/event/update' : '/app/event/update';
             const response = await fetch(updateRoute, {
@@ -463,7 +548,8 @@
                     objective_id: objectiveId,
                     count: count,
                     prompt_level: promptLevel,
-                    activity: ''
+                    activity: '',
+                    count_field: countField
                 })
             });
             
