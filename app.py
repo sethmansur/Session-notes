@@ -2099,13 +2099,13 @@ def report():
         # 4. Generate Chart Data for Visualizations
         chart_data = {
             'summary_chart': {
-                'labels': ['Correct (+)', 'Prompted (+pt)', 'Incorrect (X)'],
+                'labels': ['Correct (+)', 'Prompted (+pt)', 'Error (X)'],
                 'data': [summary_totals['total_correct'], summary_totals['total_partial'], summary_totals['total_incorrect']],
                 'percentages': [summary_totals['correct_percentage'], summary_totals['partial_percentage'], summary_totals['incorrect_percentage']],
                 'colors': ['#28a745', '#6f42c1', '#fd7e14']
             },
             'analytics_chart': {
-                'labels': ['Correct (+)', 'Prompted (+pt)', 'Incorrect (X)'],
+                'labels': ['Correct (+)', 'Prompted (+pt)', 'Error (X)'],
                 'data': [analytics_totals['total_correct'], analytics_totals['total_partial'], analytics_totals['total_incorrect']],
                 'percentages': [analytics_totals['correct_percentage'], analytics_totals['partial_percentage'], analytics_totals['incorrect_percentage']],
                 'colors': ['#28a745', '#6f42c1', '#fd7e14']
@@ -3569,9 +3569,9 @@ def report_csv():
         ).order_by(Session.date.desc(), Student.first_name).all()
         
         # Process the data for CSV export
-        headers = ['Date', 'Student', 'Session Prompt', 'Correct (+)', 'Prompted (+pt)', 'Incorrect (X)', 
+        headers = ['Date', 'Student', 'Session Prompt', 'Correct (+)', 'Prompted (+pt)', 'Error (X)', 
                   'Success Total (+/+pt)', 'Grand Total', 'Event Instances', 'Correct Fraction', 'Prompted Fraction', 
-                  'Incorrect Fraction', 'Success Fraction', 'Correct %', 'Prompted %', 'Incorrect %', 'Success %']
+                  'Error Fraction', 'Success Fraction', 'Correct %', 'Prompted %', 'Error %', 'Success %']
         rows = []
         
         for row in analytics_data:

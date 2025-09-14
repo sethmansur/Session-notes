@@ -128,7 +128,7 @@ def logout():
     """User logout"""
     logout_user()
     flash('You have been logged out.', 'info')
-    return redirect(url_for('landing'))
+    return redirect(url_for('index'))
 
 @auth_bp.route('/verify-email/<token>')
 def verify_email(token):

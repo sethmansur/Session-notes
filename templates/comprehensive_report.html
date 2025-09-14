@@ -74,13 +74,13 @@
             </div>
             <div style="background: linear-gradient(135deg, #fd7e14, #fd9843); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
                 <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.summary.totals.total_incorrect }}</div>
-                <div style="font-size: 0.9rem; opacity: 0.9;">Incorrect Responses (X)</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Error Responses (X)</div>
                 <div style="font-size: 0.8rem;">{{ comprehensive_data.summary.totals.incorrect_percentage }}%</div>
             </div>
             <div style="background: linear-gradient(135deg, #007bff, #0056b3); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
                 <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.summary.totals.success_rate }}</div>
                 <div style="font-size: 0.9rem; opacity: 0.9;">Success Rate (+/+pt)</div>
-                <div style="font-size: 0.8rem;">{{ comprehensive_data.summary.totals.success_percentage }}%</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.summary.totals.success_percentage }}% ({{ comprehensive_data.summary.totals.success_rate }}/{{ comprehensive_data.summary.totals.total_responses }})</div>
             </div>
         </div>
         
@@ -94,7 +94,8 @@
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Objective</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Correct (+)</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Prompted (+pt)</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Incorrect (X)</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; background: #e8f5e8;">Combined (+/+pt)</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Error (X)</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Total</th>
                         </tr>
                     </thead>
@@ -105,13 +106,14 @@
                             <td style="padding: 12px; border: 1px solid #ddd;">{{ row.objective }}</td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center; color: #28a745; font-weight: bold;">{{ row.total_count }}</td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center; color: #6f42c1; font-weight: bold;">{{ row.partial_count }}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; color: #17a2b8; font-weight: bold; background: #f0f9f0;">{{ row.total_count + row.partial_count }}</td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center; color: #fd7e14; font-weight: bold;">{{ row.incorrect_count }}</td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{{ row.total_count + row.partial_count + row.incorrect_count }}</td>
                         </tr>
                         {% endfor %}
                         {% if comprehensive_data.summary.data|length > 10 %}
                         <tr>
-                            <td colspan="6" style="padding: 12px; text-align: center; color: #666; font-style: italic;">
+                            <td colspan="7" style="padding: 12px; text-align: center; color: #666; font-style: italic;">
                                 ... and {{ comprehensive_data.summary.data|length - 10 }} more objectives (download full report for complete data)
                             </td>
                         </tr>
@@ -151,13 +153,13 @@
             </div>
             <div style="background: linear-gradient(135deg, #fd7e14, #fd9843); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
                 <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.session_analytics.totals.total_incorrect }}</div>
-                <div style="font-size: 0.9rem; opacity: 0.9;">Total Incorrect</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">Total Error</div>
                 <div style="font-size: 0.8rem;">{{ comprehensive_data.session_analytics.totals.incorrect_percentage }}%</div>
             </div>
             <div style="background: linear-gradient(135deg, #17a2b8, #138496); color: white; padding: 1rem; border-radius: 8px; text-align: center;">
                 <div style="font-size: 2rem; font-weight: bold;">{{ comprehensive_data.session_analytics.totals.success_rate }}</div>
                 <div style="font-size: 0.9rem; opacity: 0.9;">Success Rate</div>
-                <div style="font-size: 0.8rem;">{{ comprehensive_data.session_analytics.totals.success_percentage }}%</div>
+                <div style="font-size: 0.8rem;">{{ comprehensive_data.session_analytics.totals.success_percentage }}% ({{ comprehensive_data.session_analytics.totals.success_rate }}/{{ comprehensive_data.session_analytics.totals.total_responses }})</div>
             </div>
         </div>
         
@@ -172,7 +174,7 @@
                         <tr style="background: #f8f9fa;">
                             <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Date</th>
                             <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Student</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Success %</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Success % (Fraction)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -180,7 +182,7 @@
                         <tr style="{% if loop.index0 % 2 == 0 %}background: #f8f9fa;{% endif %}">
                             <td style="padding: 8px; border: 1px solid #ddd; font-size: 0.8rem;">{{ analytics.date }}</td>
                             <td style="padding: 8px; border: 1px solid #ddd; font-weight: 500;">{{ analytics.student_name }}</td>
-                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #007bff;">{{ analytics.combined_percentage }}%</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #007bff;">{{ analytics.combined_percentage }}% ({{ analytics.combined_fraction }})</td>
                         </tr>
                         {% endfor %}
                     </tbody>

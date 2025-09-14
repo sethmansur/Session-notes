@@ -74,12 +74,14 @@
         font-size: 1.2rem;
         font-weight: bold;
         color: #007bff;
-        width: 50px;
+        width: 45px;
+        height: 40px;
         text-align: center;
         border: 2px solid #e1e5e9;
         border-radius: 6px;
-        padding: 0.25rem;
+        padding: 0;
         background: white;
+        box-sizing: border-box;
     }
     .count-input:focus {
         outline: none;
@@ -126,12 +128,12 @@
     }
     .pt-btn {
         width: 40px;
-        height: 25px;
+        height: 40px;
         border: none;
-        border-radius: 12px;
+        border-radius: 50%;
         background: #6f42c1;
         color: white;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         font-weight: bold;
         cursor: pointer;
         display: flex;
@@ -139,7 +141,6 @@
         justify-content: center;
         transition: all 0.2s;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin-top: 0.25rem;
     }
     .pt-btn:hover {
         background: #5a2d91;
@@ -346,21 +347,21 @@
                     <div class="objective-row">
                         <div class="objective-text">${objective.text}</div>
                         <div class="count-controls">
-                            <div style="display: flex; gap: 0.25rem; align-items: center;">
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start; justify-content: center;">
                                 <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
                                     <button class="plus-btn" onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)" title="Correct Response">+</button>
                                     <input type="number" class="count-input" id="count-${selectedStudent.id}-${objective.id}" value="0" min="0" readonly
-                                           title="Correct responses (+)" style="width: 45px;">
+                                           title="Correct responses (+)">
                                 </div>
                                 <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
                                     <button class="pt-btn" onclick="incrementPartialCount(${selectedStudent.id}, ${objective.id}, this)" title="Positive with prompt help">+pt</button>
                                     <input type="number" class="count-input" id="count2-${selectedStudent.id}-${objective.id}" value="0" min="0" readonly
-                                           title="Positive with prompt help (+pt)" style="width: 45px;">
+                                           title="Positive with prompt help (+pt)">
                                 </div>
                                 <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
-                                    <button class="x-btn" onclick="incrementXCount(${selectedStudent.id}, ${objective.id}, this)" title="Incorrect/Error Response">X</button>
+                                    <button class="x-btn" onclick="incrementXCount(${selectedStudent.id}, ${objective.id}, this)" title="Error Response">X</button>
                                     <input type="number" class="count-input" id="count3-${selectedStudent.id}-${objective.id}" value="0" min="0" readonly
-                                           title="Incorrect responses (X)" style="width: 45px;">
+                                           title="Error responses (X)">
                                 </div>
                             </div>
                         </div>
