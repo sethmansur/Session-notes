@@ -21,8 +21,7 @@
         
         <div class="form-group">
             <label for="student_id">Student (optional)</label>
-            <select id="student_id" name="student_id">
-                <option value="">All Students</option>
+            <select id="student_id" name="student_id" required>
                 {% for student in students %}
                 <option value="{{ student.id }}" {% if student.id|string == student_id %}selected{% endif %}>
                     {{ student.first_name }}
