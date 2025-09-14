@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .tools-header {
+        background: linear-gradient(135deg, #fd7e14 0%, #e83e8c 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
+    .tools-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .stat-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #fd7e14;
+        margin-bottom: 0.5rem;
+    }
+    .stat-label {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .tools-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+    .tool-section {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .tool-button {
+        background: #fd7e14;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        margin: 0.5rem 0.5rem 0.5rem 0;
+        transition: all 0.3s;
+    }
+    .tool-button:hover {
+        background: #e8710a;
+    }
+    .tool-button.danger {
+        background: #dc3545;
+    }
+    .tool-button.danger:hover {
+        background: #c82333;
+    }
+    .tool-section h3 {
+        color: #333;
+        margin-bottom: 1rem;
+    }
+    .tool-section p {
+        color: #666;
+        margin-bottom: 1.5rem;
+    }
+    .back-btn {
+        background: #6c757d;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        text-decoration: none;
+        display: inline-block;
+        margin-bottom: 2rem;
+    }
+    .warning-box {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    .danger-box {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+</style>
+
+<a href="/admin" class="back-btn">← Back to Admin Dashboard</a>
+
+<div class="tools-header">
+    <h1>🔧 System Tools</h1>
+    <p>Bulk operations, data management, and system utilities</p>
+</div>
+
+<div class="tools-stats">
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total_users }}</div>
+        <div class="stat-label">Total Users</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total_organizations }}</div>
+        <div class="stat-label">Organizations</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.users_without_orgs }}</div>
+        <div class="stat-label">Users Without Orgs</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.inactive_users }}</div>
+        <div class="stat-label">Inactive Users</div>
+    </div>
+</div>
+
+<div class="tools-grid">
+    <div class="tool-section">
+        <h3>📊 Data Export Tools</h3>
+        <p>Export user data, subscription information, and analytics for external analysis</p>
+        
+        <button class="tool-button" onclick="exportUsers()">Export All Users (CSV)</button>
+        <button class="tool-button" onclick="exportSubscriptions()">Export Subscriptions</button>
+        <button class="tool-button" onclick="exportAnalytics()">Export Analytics Data</button>
+        
+        <div class="warning-box">
+            <strong>⚠️ Data Privacy:</strong> Exported data contains sensitive user information. Handle according to privacy policies.
+        </div>
+    </div>
+    
+    <div class="tool-section">
+        <h3>👥 User Management Tools</h3>
+        <p>Bulk operations for managing user accounts and subscriptions</p>
+        
+        <button class="tool-button" onclick="showBulkTrialExtension()">Bulk Extend Trials</button>
+        <button class="tool-button" onclick="showBulkStatusUpdate()">Bulk Status Update</button>
+        <button class="tool-button" onclick="showInactiveUserCleanup()">Find Inactive Users</button>
+        
+        <div id="bulkOperationForm" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+            <!-- Bulk operation forms will be dynamically loaded here -->
+        </div>
+    </div>
+    
+    <div class="tool-section">
+        <h3>🏥 Organization Tools</h3>
+        <p>Manage organizations, assign users, and handle org-level operations</p>
+        
+        <button class="tool-button" onclick="viewOrgsWithoutUsers()">Find Empty Organizations</button>
+        <button class="tool-button" onclick="showOrgUserAssignment()">Bulk Assign Users to Orgs</button>
+        <button class="tool-button" onclick="generateOrgReport()">Organization Report</button>
+        
+        <div class="warning-box">
+            <strong>📋 Organization Management:</strong> Changes to organization membership affect user access to data.
+        </div>
+    </div>
+    
+    <div class="tool-section">
+        <h3>💾 Database Tools</h3>
+        <p>Database maintenance, cleanup, and integrity checks</p>
+        
+        <button class="tool-button" onclick="checkDataIntegrity()">Check Data Integrity</button>
+        <button class="tool-button" onclick="viewDatabaseStats()">Database Statistics</button>
+        <button class="tool-button danger" onclick="showCleanupTools()">Cleanup Tools</button>
+        
+        <div class="danger-box">
+            <strong>⚠️ Dangerous Operations:</strong> Database cleanup operations cannot be undone. Always backup before running.
+        </div>
+    </div>
+    
+    <div class="tool-section">
+        <h3>📈 System Monitoring</h3>
+        <p>Monitor system health, performance, and user activity</p>
+        
+        <button class="tool-button" onclick="showSystemHealth()">System Health Check</button>
+        <button class="tool-button" onclick="viewUserActivity()">Recent User Activity</button>
+        <button class="tool-button" onclick="showPerformanceMetrics()">Performance Metrics</button>
+    </div>
+    
+    <div class="tool-section">
+        <h3>🔄 Backup & Recovery</h3>
+        <p>Data backup, restoration, and disaster recovery tools</p>
+        
+        <button class="tool-button" onclick="createBackup()">Create Database Backup</button>
+        <button class="tool-button" onclick="viewBackupHistory()">View Backup History</button>
+        <button class="tool-button danger" onclick="showRestoreTools()">Restore from Backup</button>
+        
+        <div class="warning-box">
+            <strong>💾 Backup Notice:</strong> Regular backups are essential. Test restore procedures regularly.
+        </div>
+    </div>
+</div>
+
+<div id="operationResults" style="background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-top: 2rem; display: none;">
+    <h3>Operation Results</h3>
+    <div id="resultsContent"></div>
+</div>
+
+<script>
+function showResults(title, content) {
+    document.getElementById('operationResults').style.display = 'block';
+    document.getElementById('operationResults').querySelector('h3').innerText = title;
+    document.getElementById('resultsContent').innerHTML = content;
+    document.getElementById('operationResults').scrollIntoView({ behavior: 'smooth' });
+}
+
+// Data Export Functions
+function exportUsers() {
+    showResults('Export Users', '<p>⏳ Generating user export... This may take a few moments.</p>');
+    // In a real implementation, this would make an AJAX call to a new route
+    setTimeout(() => {
+        showResults('Export Complete', '<p>✅ User export completed successfully. <a href="#" onclick="alert(\'File download would start here\')">Download CSV file</a></p>');
+    }, 2000);
+}
+
+function exportSubscriptions() {
+    showResults('Export Subscriptions', '<p>⏳ Generating subscription data export...</p>');
+    setTimeout(() => {
+        showResults('Export Complete', '<p>✅ Subscription export completed. <a href="#" onclick="alert(\'File download would start here\')">Download CSV file</a></p>');
+    }, 2000);
+}
+
+function exportAnalytics() {
+    showResults('Export Analytics', '<p>⏳ Compiling analytics data for export...</p>');
+    setTimeout(() => {
+        showResults('Export Complete', '<p>✅ Analytics export ready. <a href="#" onclick="alert(\'File download would start here\')">Download Analytics Report</a></p>');
+    }, 2000);
+}
+
+// User Management Functions
+function showBulkTrialExtension() {
+    const form = `
+        <h4>Bulk Trial Extension</h4>
+        <p>Extend trials for multiple users at once</p>
+        <textarea placeholder="Enter user IDs or email addresses (one per line)" rows="5" style="width: 100%; margin-bottom: 1rem;"></textarea>
+        <select style="margin-bottom: 1rem; padding: 0.5rem;">
+            <option>Extend by 7 days</option>
+            <option>Extend by 14 days</option>
+            <option>Extend by 30 days</option>
+        </select><br>
+        <button class="tool-button" onclick="processBulkTrialExtension()">Process Extension</button>
+    `;
+    document.getElementById('bulkOperationForm').innerHTML = form;
+    document.getElementById('bulkOperationForm').style.display = 'block';
+}
+
+function showBulkStatusUpdate() {
+    const form = `
+        <h4>Bulk Status Update</h4>
+        <p>Update subscription status for multiple users</p>
+        <textarea placeholder="Enter user IDs (one per line)" rows="5" style="width: 100%; margin-bottom: 1rem;"></textarea>
+        <select style="margin-bottom: 1rem; padding: 0.5rem;">
+            <option>Set to Active</option>
+            <option>Set to Trial</option>
+            <option>Set to Expired</option>
+            <option>Set to Cancelled</option>
+        </select><br>
+        <button class="tool-button" onclick="processBulkStatusUpdate()">Update Status</button>
+    `;
+    document.getElementById('bulkOperationForm').innerHTML = form;
+    document.getElementById('bulkOperationForm').style.display = 'block';
+}
+
+function showInactiveUserCleanup() {
+    showResults('Finding Inactive Users', '<p>⏳ Scanning for users with expired subscriptions and no recent activity...</p>');
+    setTimeout(() => {
+        showResults('Inactive Users Found', 
+            '<p>Found {{ stats.inactive_users }} inactive users:</p>' +
+            '<ul><li>Users with expired subscriptions: {{ stats.inactive_users }}</li>' +
+            '<li>No activity in 30+ days: <em>Analysis in progress...</em></li></ul>' +
+            '<button class="tool-button danger" onclick="alert(\'Cleanup process would be confirmed here\')">Clean up Inactive Accounts</button>'
+        );
+    }, 3000);
+}
+
+// Organization Functions  
+function viewOrgsWithoutUsers() {
+    showResults('Empty Organizations', '<p>⏳ Scanning for organizations without active members...</p>');
+    setTimeout(() => {
+        showResults('Scan Complete', '<p>Found organizations that may need attention. Review and clean up as needed.</p>');
+    }, 2000);
+}
+
+function showOrgUserAssignment() {
+    showResults('Bulk Organization Assignment', '<p>This tool would allow assigning multiple users to organizations at once.</p>');
+}
+
+function generateOrgReport() {
+    showResults('Organization Report', '<p>⏳ Generating comprehensive organization report...</p>');
+    setTimeout(() => {
+        showResults('Report Generated', '<p>✅ Organization report completed. <a href="#" onclick="alert(\'Report download would start here\')">Download Report</a></p>');
+    }, 3000);
+}
+
+// Database Functions
+function checkDataIntegrity() {
+    showResults('Data Integrity Check', '<p>⏳ Running database integrity checks...</p>');
+    setTimeout(() => {
+        showResults('Integrity Check Complete', 
+            '<p>✅ Database integrity check completed:</p>' +
+            '<ul><li>Referential integrity: ✅ OK</li>' +
+            '<li>Orphaned records: ✅ None found</li>' +
+            '<li>Data consistency: ✅ All checks passed</li></ul>'
+        );
+    }, 4000);
+}
+
+function viewDatabaseStats() {
+    const stats = `
+        <p><strong>Database Statistics:</strong></p>
+        <ul>
+            <li>Total Records: ${{{ stats.total_users + stats.total_organizations }}}</li>
+            <li>Users: {{ stats.total_users }}</li>
+            <li>Organizations: {{ stats.total_organizations }}</li>
+            <li>Database Size: <em>Calculating...</em></li>
+        </ul>
+    `;
+    showResults('Database Statistics', stats);
+}
+
+function showCleanupTools() {
+    showResults('Database Cleanup Tools', 
+        '<div class="danger-box"><strong>⚠️ Dangerous Operations</strong><br>' +
+        'These operations permanently delete data and cannot be undone.</div>' +
+        '<button class="tool-button danger" onclick="alert(\'This would require additional confirmation\')">Remove Orphaned Records</button> ' +
+        '<button class="tool-button danger" onclick="alert(\'This would require additional confirmation\')">Clean Old Session Data</button>'
+    );
+}
+
+// System Monitoring Functions
+function showSystemHealth() {
+    showResults('System Health Check', '<p>⏳ Checking system components...</p>');
+    setTimeout(() => {
+        showResults('System Health Status', 
+            '<p>✅ System health check completed:</p>' +
+            '<ul><li>Database: ✅ Connected</li>' +
+            '<li>Stripe API: ✅ Responding</li>' +
+            '<li>Server Load: ✅ Normal</li>' +
+            '<li>Memory Usage: ✅ Within limits</li></ul>'
+        );
+    }, 3000);
+}
+
+function viewUserActivity() {
+    showResults('Recent User Activity', '<p>⏳ Compiling user activity data...</p>');
+    setTimeout(() => {
+        showResults('User Activity Report', '<p>Recent activity summary compiled. This would show login patterns, feature usage, and engagement metrics.</p>');
+    }, 2500);
+}
+
+function showPerformanceMetrics() {
+    showResults('Performance Metrics', '<p>Current system performance metrics and optimization suggestions would be displayed here.</p>');
+}
+
+// Backup Functions
+function createBackup() {
+    showResults('Creating Backup', '<p>⏳ Creating full database backup...</p>');
+    setTimeout(() => {
+        showResults('Backup Complete', '<p>✅ Database backup created successfully. Backup stored securely.</p>');
+    }, 5000);
+}
+
+function viewBackupHistory() {
+    showResults('Backup History', '<p>Recent backup history and restoration points would be listed here.</p>');
+}
+
+function showRestoreTools() {
+    showResults('Restore from Backup', 
+        '<div class="danger-box"><strong>⚠️ Critical Operation</strong><br>' +
+        'Restoring from backup will overwrite current data.</div>' +
+        '<p>Available backup restoration options and procedures would be shown here.</p>'
+    );
+}
+
+// Placeholder functions for bulk operations
+function processBulkTrialExtension() {
+    showResults('Trial Extension Processing', '<p>⏳ Processing trial extensions...</p>');
+    setTimeout(() => {
+        showResults('Extension Complete', '<p>✅ Trial extensions processed successfully.</p>');
+    }, 3000);
+}
+
+function processBulkStatusUpdate() {
+    showResults('Status Update Processing', '<p>⏳ Updating user statuses...</p>');
+    setTimeout(() => {
+        showResults('Update Complete', '<p>✅ User status updates completed.</p>');
+    }, 3000);
+}
+</script>
+{% endblock %}

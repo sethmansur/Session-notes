@@ -451,6 +451,176 @@ def admin_update_user(user_id):
     
     return redirect(url_for('admin_user_detail', user_id=user_id))
 
+@app.route('/admin/analytics')
+@super_admin_required
+def admin_analytics():
+    """Analytics dashboard showing user growth and subscription metrics"""
+    from sqlalchemy import func
+    from datetime import datetime, timedelta
+    
+    # Get growth metrics over last 30 days
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    
+    # User growth by day (last 30 days) - format dates for template compatibility
+    daily_signups_raw = db.session.query(
+        func.date(User.created_at).label('date'),
+        func.count(User.id).label('signups')
+    ).filter(User.created_at >= thirty_days_ago).group_by(func.date(User.created_at)).all()
+    
+    # Format dates to MM/DD for display
+    daily_signups = []
+    for signup in daily_signups_raw:
+        try:
+            # Handle different date formats from SQLite
+            if isinstance(signup.date, str):
+                from datetime import datetime
+                date_obj = datetime.strptime(signup.date, '%Y-%m-%d').date()
+                formatted_date = date_obj.strftime('%m/%d')
+            else:
+                formatted_date = signup.date.strftime('%m/%d')
+            daily_signups.append({
+                'date': formatted_date,
+                'signups': signup.signups
+            })
+        except (ValueError, AttributeError):
+            # Fallback to string representation
+            daily_signups.append({
+                'date': str(signup.date),
+                'signups': signup.signups
+            })
+    
+    # Plan distribution
+    plan_distribution = db.session.query(
+        User.plan_type,
+        func.count(User.id).label('count')
+    ).group_by(User.plan_type).all()
+    
+    # Status distribution  
+    status_distribution = db.session.query(
+        User.subscription_status,
+        func.count(User.id).label('count')
+    ).group_by(User.subscription_status).all()
+    
+    # Monthly metrics comparison
+    current_month = datetime.now().replace(day=1)
+    last_month = (current_month - timedelta(days=1)).replace(day=1)
+    
+    current_month_users = db.session.query(func.count(User.id)).filter(
+        User.created_at >= current_month
+    ).scalar() or 0
+    
+    last_month_users = db.session.query(func.count(User.id)).filter(
+        User.created_at >= last_month,
+        User.created_at < current_month
+    ).scalar() or 0
+    
+    # Calculate growth percentage
+    if last_month_users > 0:
+        growth_rate = ((current_month_users - last_month_users) / last_month_users) * 100
+    else:
+        growth_rate = 100 if current_month_users > 0 else 0
+    
+    return render_template('admin_analytics.html',
+                          daily_signups=daily_signups,
+                          plan_distribution=plan_distribution,
+                          status_distribution=status_distribution,
+                          current_month_users=current_month_users,
+                          last_month_users=last_month_users,
+                          growth_rate=growth_rate)
+
+@app.route('/admin/revenue')
+@super_admin_required
+def admin_revenue():
+    """Revenue dashboard with Stripe integration and financial metrics"""
+    from sqlalchemy import func
+    from datetime import datetime, timedelta
+    import stripe
+    
+    # Initialize Stripe
+    stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
+    
+    # Plan pricing (should match your actual pricing)
+    plan_prices = {
+        'starter': 9.00,
+        'pro': 19.00,
+        'team': 39.00
+    }
+    
+    # Calculate estimated monthly revenue from active subscriptions
+    plan_counts = db.session.query(
+        User.plan_type,
+        func.count(User.id).label('count')
+    ).filter(
+        User.subscription_status == 'active'
+    ).group_by(User.plan_type).all()
+    
+    monthly_revenue = 0
+    plan_revenue = {}
+    
+    for plan, count in plan_counts:
+        if plan in plan_prices:
+            revenue = plan_prices[plan] * count
+            monthly_revenue += revenue
+            plan_revenue[plan] = {
+                'count': count,
+                'unit_price': plan_prices[plan],
+                'total_revenue': revenue
+            }
+    
+    # Get recent subscription changes
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    recent_changes = db.session.query(User).filter(
+        User.updated_at >= thirty_days_ago,
+        User.subscription_status.in_(['active', 'cancelled', 'expired'])
+    ).order_by(User.updated_at.desc()).limit(20).all()
+    
+    # Stripe integration for additional metrics (if available)
+    stripe_metrics = {}
+    try:
+        if stripe.api_key:
+            # Get recent payments and format dates  
+            recent_charges = stripe.Charge.list(limit=10)
+            formatted_charges = []
+            for charge in recent_charges.data:
+                charge_data = {
+                    'amount': charge.amount,
+                    'description': charge.description,
+                    'status': charge.status,
+                    'created': datetime.fromtimestamp(charge.created).strftime('%m/%d/%Y')
+                }
+                formatted_charges.append(charge_data)
+            stripe_metrics['recent_charges'] = formatted_charges
+            
+            # Get subscription metrics
+            subscriptions = stripe.Subscription.list(limit=100)
+            stripe_metrics['active_subscriptions'] = len([s for s in subscriptions.data if s.status == 'active'])
+            stripe_metrics['total_stripe_revenue'] = sum(s.plan.amount for s in subscriptions.data if s.status == 'active') / 100
+    except Exception as e:
+        app.logger.warning(f"Stripe API error: {e}")
+        stripe_metrics = {}
+    
+    return render_template('admin_revenue.html',
+                          monthly_revenue=monthly_revenue,
+                          plan_revenue=plan_revenue,
+                          plan_prices=plan_prices,
+                          recent_changes=recent_changes,
+                          stripe_metrics=stripe_metrics)
+
+@app.route('/admin/tools')
+@super_admin_required  
+def admin_tools():
+    """System tools and bulk operations for admin management"""
+    
+    # Get system statistics
+    stats = {
+        'total_users': db.session.query(func.count(User.id)).scalar() or 0,
+        'total_organizations': db.session.query(func.count(Organization.id)).scalar() or 0,
+        'users_without_orgs': db.session.query(func.count(User.id)).outerjoin(Membership).filter(Membership.user_id.is_(None)).scalar() or 0,
+        'inactive_users': db.session.query(func.count(User.id)).filter(User.subscription_status == 'expired').scalar() or 0
+    }
+    
+    return render_template('admin_tools.html', stats=stats)
+
 # Organization Admin Panel Routes
 @app.route('/org/<int:org_id>/admin')
 @org_admin_required()

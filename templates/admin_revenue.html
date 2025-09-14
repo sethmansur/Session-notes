@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .revenue-header {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
+    .revenue-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .revenue-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .revenue-amount {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #28a745;
+        margin-bottom: 0.5rem;
+    }
+    .revenue-label {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .plan-breakdown {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    .plan-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid #eee;
+    }
+    .plan-item:last-child {
+        border-bottom: none;
+    }
+    .plan-name {
+        font-weight: bold;
+        text-transform: capitalize;
+    }
+    .plan-metrics {
+        text-align: right;
+        font-size: 0.9rem;
+    }
+    .recent-changes {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    .change-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .change-item:last-child {
+        border-bottom: none;
+    }
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    .status-active { background: #d4edda; color: #155724; }
+    .status-cancelled { background: #f8d7da; color: #721c24; }
+    .status-expired { background: #e2e3e5; color: #383d41; }
+    .stripe-section {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    .back-btn {
+        background: #6c757d;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        text-decoration: none;
+        display: inline-block;
+        margin-bottom: 2rem;
+    }
+</style>
+
+<a href="/admin" class="back-btn">← Back to Admin Dashboard</a>
+
+<div class="revenue-header">
+    <h1>💰 Revenue Dashboard</h1>
+    <p>Financial metrics, subscription revenue, and Stripe integration</p>
+</div>
+
+<div class="revenue-stats">
+    <div class="revenue-card">
+        <div class="revenue-amount">${{ "%.2f"|format(monthly_revenue) }}</div>
+        <div class="revenue-label">Est. Monthly Revenue</div>
+    </div>
+    <div class="revenue-card">
+        <div class="revenue-amount">{{ plan_revenue|length }}</div>
+        <div class="revenue-label">Active Plan Types</div>
+    </div>
+    {% if stripe_metrics.active_subscriptions %}
+    <div class="revenue-card">
+        <div class="revenue-amount">{{ stripe_metrics.active_subscriptions }}</div>
+        <div class="revenue-label">Stripe Subscriptions</div>
+    </div>
+    <div class="revenue-card">
+        <div class="revenue-amount">${{ "%.2f"|format(stripe_metrics.total_stripe_revenue or 0) }}</div>
+        <div class="revenue-label">Stripe Revenue</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="plan-breakdown">
+    <h3 style="margin-bottom: 1.5rem; color: #333;">📊 Plan Revenue Breakdown</h3>
+    {% if plan_revenue %}
+        {% for plan, data in plan_revenue.items() %}
+        <div class="plan-item">
+            <div>
+                <div class="plan-name">{{ plan }}</div>
+                <div style="color: #666; font-size: 0.9rem;">{{ data.count }} subscribers</div>
+            </div>
+            <div class="plan-metrics">
+                <div style="font-weight: bold;">${{ "%.2f"|format(data.total_revenue) }}/month</div>
+                <div style="color: #666;">${{ "%.2f"|format(data.unit_price) }} per user</div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align: center; color: #666; padding: 2rem;">No active subscription revenue</p>
+    {% endif %}
+</div>
+
+{% if stripe_metrics.recent_charges %}
+<div class="stripe-section">
+    <h3 style="margin-bottom: 1.5rem; color: #333;">🔄 Recent Stripe Charges</h3>
+    {% for charge in stripe_metrics.recent_charges[:5] %}
+    <div class="change-item">
+        <div>
+            <strong>${{ "%.2f"|format(charge.amount / 100) }}</strong>
+            {% if charge.description %}
+            <div style="color: #666; font-size: 0.9rem;">{{ charge.description }}</div>
+            {% endif %}
+        </div>
+        <div style="text-align: right;">
+            <span class="status-badge {% if charge.status == 'succeeded' %}status-active{% else %}status-expired{% endif %}">
+                {{ charge.status }}
+            </span>
+            <div style="color: #666; font-size: 0.8rem;">
+                {{ charge.created }}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="recent-changes">
+    <h3 style="margin-bottom: 1.5rem; color: #333;">🔄 Recent Subscription Changes</h3>
+    {% if recent_changes %}
+        {% for user in recent_changes %}
+        <div class="change-item">
+            <div>
+                <strong>{{ user.first_name }} {{ user.last_name or '' }}</strong>
+                <div style="color: #666; font-size: 0.9rem;">
+                    {{ user.plan_type or 'No Plan' }}
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <span class="status-badge status-{{ user.subscription_status }}">{{ user.subscription_status }}</span>
+                <div style="color: #666; font-size: 0.8rem;">
+                    {% if user.updated_at %}{{ user.updated_at.strftime('%m/%d/%Y') }}{% else %}N/A{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align: center; color: #666; padding: 2rem;">No recent subscription changes</p>
+    {% endif %}
+</div>
+
+{% if not stripe_metrics %}
+<div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-top: 2rem;">
+    <h4 style="color: #856404; margin: 0 0 0.5rem 0;">⚠️ Stripe Integration</h4>
+    <p style="color: #856404; margin: 0;">Stripe data is not available. Check your STRIPE_SECRET_KEY configuration for live financial metrics.</p>
+</div>
+{% endif %}
+
+<script>
+// Add timestamp filter for Jinja
+{% if stripe_metrics.recent_charges %}
+// This would typically be handled server-side, but showing the concept
+console.log('Recent Stripe charges loaded:', {{ stripe_metrics.recent_charges|length }});
+{% endif %}
+</script>
+{% endblock %}

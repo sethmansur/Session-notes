@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .analytics-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .metric-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #667eea;
+        margin-bottom: 0.5rem;
+    }
+    .metric-label {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .chart-container {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    .growth-indicator {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9rem;
+    }
+    .growth-positive { background: #d4edda; color: #155724; }
+    .growth-negative { background: #f8d7da; color: #721c24; }
+    .growth-neutral { background: #e2e3e5; color: #383d41; }
+    .back-btn {
+        background: #6c757d;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        text-decoration: none;
+        display: inline-block;
+        margin-bottom: 2rem;
+    }
+</style>
+
+<a href="/admin" class="back-btn">← Back to Admin Dashboard</a>
+
+<div class="analytics-header">
+    <h1>📊 Analytics Dashboard</h1>
+    <p>User growth, subscription metrics, and platform insights</p>
+</div>
+
+<div class="metrics-grid">
+    <div class="metric-card">
+        <div class="metric-number">{{ current_month_users }}</div>
+        <div class="metric-label">New Users This Month</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-number">{{ last_month_users }}</div>
+        <div class="metric-label">New Users Last Month</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-number">
+            <span class="growth-indicator {% if growth_rate > 0 %}growth-positive{% elif growth_rate < 0 %}growth-negative{% else %}growth-neutral{% endif %}">
+                {% if growth_rate > 0 %}+{% endif %}{{ "%.1f"|format(growth_rate) }}%
+            </span>
+        </div>
+        <div class="metric-label">Month-over-Month Growth</div>
+    </div>
+</div>
+
+<div class="chart-container">
+    <h3 style="margin-bottom: 1.5rem; color: #333;">📈 Daily Signups (Last 30 Days)</h3>
+    {% if daily_signups %}
+        <canvas id="signupsChart" width="400" height="200"></canvas>
+    {% else %}
+        <p style="text-align: center; color: #666; padding: 2rem;">No signup data available for the last 30 days</p>
+    {% endif %}
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+    <div class="chart-container">
+        <h3 style="margin-bottom: 1.5rem; color: #333;">🎯 Subscription Plans</h3>
+        {% if plan_distribution %}
+            <canvas id="plansChart" width="300" height="300"></canvas>
+        {% else %}
+            <p style="text-align: center; color: #666; padding: 2rem;">No plan data available</p>
+        {% endif %}
+    </div>
+    
+    <div class="chart-container">
+        <h3 style="margin-bottom: 1.5rem; color: #333;">📊 Subscription Status</h3>
+        {% if status_distribution %}
+            <canvas id="statusChart" width="300" height="300"></canvas>
+        {% else %}
+            <p style="text-align: center; color: #666; padding: 2rem;">No status data available</p>
+        {% endif %}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Daily Signups Chart
+{% if daily_signups %}
+const signupsCtx = document.getElementById('signupsChart').getContext('2d');
+new Chart(signupsCtx, {
+    type: 'line',
+    data: {
+        labels: [{% for signup in daily_signups %}'{{ signup.date }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Daily Signups',
+            data: [{% for signup in daily_signups %}{{ signup.signups }}{% if not loop.last %},{% endif %}{% endfor %}],
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        }
+    }
+});
+{% endif %}
+
+// Plans Distribution Chart
+{% if plan_distribution %}
+const plansCtx = document.getElementById('plansChart').getContext('2d');
+new Chart(plansCtx, {
+    type: 'doughnut',
+    data: {
+        labels: [{% for plan in plan_distribution %}'{{ plan.plan_type or "No Plan" }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            data: [{% for plan in plan_distribution %}{{ plan.count }}{% if not loop.last %},{% endif %}{% endfor %}],
+            backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe']
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+{% endif %}
+
+// Status Distribution Chart
+{% if status_distribution %}
+const statusCtx = document.getElementById('statusChart').getContext('2d');
+new Chart(statusCtx, {
+    type: 'doughnut',
+    data: {
+        labels: [{% for status in status_distribution %}'{{ status.subscription_status or "No Status" }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            data: [{% for status in status_distribution %}{{ status.count }}{% if not loop.last %},{% endif %}{% endfor %}],
+            backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d', '#17a2b8']
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+{% endif %}
+</script>
+{% endblock %}
