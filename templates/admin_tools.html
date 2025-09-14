@@ -263,9 +263,18 @@ function exportSubscriptions() {
 
 function exportAnalytics() {
     showResults('Export Analytics', '<p>⏳ Compiling analytics data for export...</p>');
+    
+    // Create a temporary link to trigger download
+    const link = document.createElement('a');
+    link.href = '/admin/export/analytics';
+    link.download = 'analytics_export.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
     setTimeout(() => {
-        showResults('Export Complete', '<p>✅ Analytics export ready. <a href="#" onclick="alert(\'File download would start here\')">Download Analytics Report</a></p>');
-    }, 2000);
+        showResults('Export Complete', '<p>✅ Analytics export download started.</p>');
+    }, 1000);
 }
 
 // User Management Functions

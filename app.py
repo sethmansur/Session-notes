@@ -835,6 +835,62 @@ def export_subscriptions():
     except Exception as e:
         return jsonify({'error': f'Failed to export subscriptions: {str(e)}'}), 500
 
+@app.route('/admin/export/analytics')
+@super_admin_required
+def export_analytics():
+    """Export analytics data as CSV"""
+    try:
+        import csv
+        from io import StringIO
+        from datetime import datetime, timedelta
+        
+        # Get analytics data for the past 30 days
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        
+        # User registration stats
+        new_users = User.query.filter(User.created_at >= thirty_days_ago).count()
+        total_users = User.query.count()
+        trial_users = User.query.filter_by(subscription_status='trial').count()
+        active_users = User.query.filter_by(subscription_status='active').count()
+        
+        # Plan distribution
+        freemium_users = User.query.filter_by(plan_type='freemium').count()
+        individual_users = User.query.filter_by(plan_type='individual').count()
+        team_users = User.query.filter_by(plan_type='team').count()
+        
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow(['Metric', 'Value', 'Description'])
+        
+        # Write analytics data
+        writer.writerow(['New Users (30 days)', new_users, 'Users registered in the last 30 days'])
+        writer.writerow(['Total Users', total_users, 'Total registered users'])
+        writer.writerow(['Trial Users', trial_users, 'Users currently on trial'])
+        writer.writerow(['Active Subscribers', active_users, 'Users with active subscriptions'])
+        writer.writerow(['Freemium Users', freemium_users, 'Users on freemium plan'])
+        writer.writerow(['Individual Plan Users', individual_users, 'Users on individual plan'])
+        writer.writerow(['Team Plan Users', team_users, 'Users on team plan'])
+        
+        # Add user breakdown by status
+        writer.writerow(['', '', ''])  # Empty row
+        writer.writerow(['User Status Breakdown', '', ''])
+        
+        from sqlalchemy import func
+        status_counts = db.session.query(User.subscription_status, func.count(User.id)).group_by(User.subscription_status).all()
+        for status, count in status_counts:
+            writer.writerow([f'Users - {status}', count, f'Number of users with {status} status'])
+        
+        response = make_response(output.getvalue())
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = f'attachment; filename=analytics_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to export analytics: {str(e)}'}), 500
+
 @app.route('/admin/import/users', methods=['GET', 'POST'])
 @super_admin_required
 def import_users():
