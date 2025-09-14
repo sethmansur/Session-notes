@@ -2780,6 +2780,77 @@ def report_pdf():
                 for s in student_summaries:
                     data.append([s.first_name, str(s.total_attempts), str(s.sessions), str(s.objectives)])
         
+        elif report_type == 'session_analytics':
+            # Session Analytics: Track +/+pt/additional counts with percentages and prompt levels
+            analytics_query = db.session.query(
+                Session.date,
+                Student.first_name.label('student_name'),
+                Student.id.label('student_id'),
+                func.sum(Event.count).label('main_count'),  # + button interactions
+                func.sum(Event.count2).label('count2_total'),  # Additional count box 1
+                func.sum(Event.count3).label('count3_total'),  # Additional count box 2
+                func.count(Event.id).label('event_instances'),  # Total objective instances
+                Event.prompt_level.label('session_prompt')  # Session-wide prompt level
+            ).select_from(Event)\
+             .join(Session, Event.session_id == Session.id)\
+             .join(Student, Event.student_id == Student.id)\
+             .filter(Student.organization_id == organization.id)
+            
+            # Apply date filters
+            if start_date and end_date:
+                analytics_query = analytics_query.filter(
+                    and_(Session.date >= start_date, Session.date <= end_date)
+                )
+            elif start_date:
+                analytics_query = analytics_query.filter(Session.date >= start_date)
+            elif end_date:
+                analytics_query = analytics_query.filter(Session.date <= end_date)
+            
+            # Apply student filter
+            if student_id:
+                analytics_query = analytics_query.filter(Student.id == student_id)
+            
+            # Group by session, student, and prompt level
+            analytics_data = analytics_query.group_by(
+                Session.date, Student.id, Student.first_name, Event.prompt_level
+            ).order_by(Session.date.desc(), Student.first_name).all()
+            
+            # Process the data for PDF export
+            headers = ['Date', 'Student', 'Prompt', 'Main', 'Count2', 'Count3', 'Combined', 'Grand', 'Main %', 'Comb %']
+            data = [headers]
+            
+            for row in analytics_data:
+                # Handle null values
+                main_count = float(row.main_count or 0)
+                count2_total = float(row.count2_total or 0) 
+                count3_total = float(row.count3_total or 0)
+                
+                # Calculate combined total (+ and +pt interpretation)
+                combined_total = main_count + count2_total
+                
+                # Calculate grand total of all counts
+                grand_total = main_count + count2_total + count3_total
+                
+                # Calculate percentages (avoid division by zero)
+                if grand_total > 0:
+                    main_percentage = round((main_count / grand_total) * 100, 1)
+                    combined_percentage = round((combined_total / grand_total) * 100, 1)
+                else:
+                    main_percentage = combined_percentage = 0
+                
+                data.append([
+                    str(row.date),
+                    row.student_name,
+                    (row.session_prompt or 'Not Set')[:8],  # Truncate for PDF width
+                    str(int(main_count)),
+                    str(int(count2_total)),
+                    str(int(count3_total)),
+                    str(int(combined_total)),
+                    str(int(grand_total)),
+                    f"{main_percentage}%",
+                    f"{combined_percentage}%"
+                ])
+        
         else:
             # Fallback to by_objective for unknown types
             query = db.session.query(Event)\
@@ -3116,6 +3187,95 @@ def report_csv():
             student_summaries = all_events.group_by(Student.id).all()
             headers = ['Student', 'Total Attempts', 'Sessions', 'Objectives']
             rows = [[s.first_name, s.total_attempts, s.sessions, s.objectives] for s in student_summaries]
+    
+    elif report_type == 'session_analytics':
+        # Session Analytics: Track +/+pt/additional counts with percentages and prompt levels
+        analytics_query = db.session.query(
+            Session.date,
+            Student.first_name.label('student_name'),
+            Student.id.label('student_id'),
+            func.sum(Event.count).label('main_count'),  # + button interactions
+            func.sum(Event.count2).label('count2_total'),  # Additional count box 1
+            func.sum(Event.count3).label('count3_total'),  # Additional count box 2
+            func.count(Event.id).label('event_instances'),  # Total objective instances
+            Event.prompt_level.label('session_prompt')  # Session-wide prompt level
+        ).select_from(Event)\
+         .join(Session, Event.session_id == Session.id)\
+         .join(Student, Event.student_id == Student.id)\
+         .filter(Student.organization_id == organization.id)
+        
+        # Apply date filters
+        if start_date and end_date:
+            analytics_query = analytics_query.filter(
+                and_(Session.date >= start_date, Session.date <= end_date)
+            )
+        elif start_date:
+            analytics_query = analytics_query.filter(Session.date >= start_date)
+        elif end_date:
+            analytics_query = analytics_query.filter(Session.date <= end_date)
+        
+        # Apply student filter
+        if student_id:
+            analytics_query = analytics_query.filter(Student.id == student_id)
+        
+        # Group by session, student, and prompt level
+        analytics_data = analytics_query.group_by(
+            Session.date, Student.id, Student.first_name, Event.prompt_level
+        ).order_by(Session.date.desc(), Student.first_name).all()
+        
+        # Process the data for CSV export
+        headers = ['Date', 'Student', 'Session Prompt', 'Main Count', 'Count2 Total', 'Count3 Total', 
+                  'Combined Total', 'Grand Total', 'Event Instances', 'Main Fraction', 'Count2 Fraction', 
+                  'Count3 Fraction', 'Combined Fraction', 'Main %', 'Count2 %', 'Count3 %', 'Combined %']
+        rows = []
+        
+        for row in analytics_data:
+            # Handle null values
+            main_count = float(row.main_count or 0)
+            count2_total = float(row.count2_total or 0) 
+            count3_total = float(row.count3_total or 0)
+            event_instances = int(row.event_instances or 0)
+            
+            # Calculate combined total (+ and +pt interpretation)
+            combined_total = main_count + count2_total
+            
+            # Calculate grand total of all counts
+            grand_total = main_count + count2_total + count3_total
+            
+            # Calculate fractions and percentages (avoid division by zero)
+            if grand_total > 0:
+                main_fraction = main_count / grand_total
+                count2_fraction = count2_total / grand_total
+                count3_fraction = count3_total / grand_total
+                combined_fraction = combined_total / grand_total
+                
+                main_percentage = round(main_fraction * 100, 1)
+                count2_percentage = round(count2_fraction * 100, 1)
+                count3_percentage = round(count3_fraction * 100, 1)
+                combined_percentage = round(combined_fraction * 100, 1)
+            else:
+                main_fraction = count2_fraction = count3_fraction = combined_fraction = 0
+                main_percentage = count2_percentage = count3_percentage = combined_percentage = 0
+            
+            rows.append([
+                row.date.isoformat(),
+                row.student_name,
+                row.session_prompt or 'Not Set',
+                main_count,
+                count2_total,
+                count3_total,
+                combined_total,
+                grand_total,
+                event_instances,
+                f"{main_count:.1f}/{grand_total:.1f}",
+                f"{count2_total:.1f}/{grand_total:.1f}",
+                f"{count3_total:.1f}/{grand_total:.1f}",
+                f"{combined_total:.1f}/{grand_total:.1f}",
+                main_percentage,
+                count2_percentage,
+                count3_percentage,
+                combined_percentage
+            ])
     
     else:
         # Fallback to by_objective for unknown types

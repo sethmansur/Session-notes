@@ -93,6 +93,7 @@
             {% elif report_type == 'data_grid' %}Quick Data Grid
             {% elif report_type == 'student_dashboard' %}Student Dashboard
             {% elif report_type == 'comprehensive_dashboard' %}Comprehensive Dashboard
+            {% elif report_type == 'session_analytics' %}Session Analytics
             {% else %}Detailed Report{% endif %}
             {% if report_data %}({{ report_data|length }} records){% endif %}
         </h3>
