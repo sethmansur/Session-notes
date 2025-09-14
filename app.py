@@ -2269,7 +2269,7 @@ def report():
     
     # For chart types, prepare chart data
     chart_data = None
-    if report_type in ['chart', 'pie']:
+    if report_type in ['chart', 'pie', 'bar_graph']:
         # Get summary data for charts
         summary_query = db.session.query(
             Student.first_name.label('student'),
@@ -2364,6 +2364,23 @@ def report():
             
             chart_data = {
                 'type': 'pie',
+                'labels': list(objective_totals.keys()),
+                'data': list(objective_totals.values())
+            }
+        
+        elif report_type == 'bar_graph':
+            # Prepare data for bar graph (objective distribution)
+            objective_totals = {}
+            for row in summary_data:
+                # Truncate long objective names for display
+                obj_name = row.objective[:30] + '...' if len(row.objective) > 30 else row.objective
+                objective_totals[obj_name] = objective_totals.get(obj_name, 0) + row.total_count
+            
+            # Only show objectives with counts > 0 for bar graph
+            objective_totals = {k: v for k, v in objective_totals.items() if v > 0}
+            
+            chart_data = {
+                'type': 'bar',
                 'labels': list(objective_totals.keys()),
                 'data': list(objective_totals.values())
             }

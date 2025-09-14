@@ -44,7 +44,10 @@
                     📈 Progress Chart
                 </option>
                 <option value="pie" {% if report_type == 'pie' %}selected{% endif %}>
-                    🥧 Objective Distribution
+                    🥧 Pie Chart View
+                </option>
+                <option value="bar_graph" {% if report_type == 'bar_graph' %}selected{% endif %}>
+                    📊 Bar Graph View
                 </option>
                 <option value="student_progress" {% if report_type == 'student_progress' %}selected{% endif %}>
                     👨‍🎓 Student Progress Cards
@@ -85,7 +88,8 @@
         <h3 style="margin: 0;">
             {% if report_type == 'summary' %}Summary Report
             {% elif report_type == 'chart' %}Progress Chart
-            {% elif report_type == 'pie' %}Objective Distribution
+            {% elif report_type == 'pie' %}Pie Chart View
+            {% elif report_type == 'bar_graph' %}Bar Graph View
             {% elif report_type == 'student_progress' %}Student Progress Cards
             {% elif report_type == 'daily_summary' %}Daily Session Summary
             {% elif report_type == 'goal_tracking' %}Goal Achievement Tracker
@@ -116,7 +120,7 @@
                 📑 Download PDF
             </a>
             
-            {% if report_type in ['chart', 'pie'] %}
+            {% if report_type in ['chart', 'pie', 'bar_graph'] %}
             <button class="btn btn-secondary btn-small" onclick="downloadChart()">
                 💾 Download Chart
             </button>
@@ -185,6 +189,10 @@
         <div style="width: 400px; height: 400px;">
             <canvas id="pieChart"></canvas>
         </div>
+    </div>
+    {% elif report_type == 'bar_graph' %}
+    <div style="width: 100%; height: 400px; margin-bottom: 2rem;">
+        <canvas id="barChart"></canvas>
     </div>
     
     {% elif report_type == 'comprehensive_dashboard' %}
@@ -695,7 +703,7 @@
                 } else if (attempts >= maxAttempts) {
                     clearInterval(checkInterval);
                     console.error('Chart.js failed to load after 5 seconds');
-                    const chartContainer = document.querySelector('#progressChart, #pieChart');
+                    const chartContainer = document.querySelector('#progressChart, #pieChart, #barChart');
                     if (chartContainer) {
                         chartContainer.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;"><p>Chart loading failed. Please refresh the page.</p></div>';
                     }
@@ -793,6 +801,68 @@
                         labels: {
                             boxWidth: 12,
                             padding: 10
+                        }
+                    }
+                }
+            }
+        });
+        });
+    });
+    {% elif report_type == 'bar_graph' and chart_data %}
+    document.addEventListener('DOMContentLoaded', function() {
+        waitForChart(function() {
+        const ctx = document.getElementById('barChart').getContext('2d');
+        currentChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: {{ chart_data.labels | tojson }},
+                datasets: [{
+                    label: 'Total Attempts',
+                    data: {{ chart_data.data | tojson }},
+                    backgroundColor: function() {
+                        const baseColors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14', '#20c997', '#e83e8c', '#6c757d', '#17a2b8'];
+                        const colors = [];
+                        for (let i = 0; i < {{ chart_data.labels | length }}; i++) {
+                            colors.push(baseColors[i % baseColors.length]);
+                        }
+                        return colors;
+                    }(),
+                    borderColor: function() {
+                        const baseBorders = ['#0056b3', '#1e7e34', '#e0a800', '#c82333', '#5a3088', '#e8660d', '#1a9f84', '#d91a72', '#5a6268', '#138496'];
+                        const colors = [];
+                        for (let i = 0; i < {{ chart_data.labels | length }}; i++) {
+                            colors.push(baseBorders[i % baseBorders.length]);
+                        }
+                        return colors;
+                    }(),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Objective Distribution - Total Attempts',
+                        font: { size: 16, weight: 'bold' }
+                    },
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Attempts'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Therapy Objectives'
                         }
                     }
                 }
