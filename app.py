@@ -209,10 +209,13 @@ def user_profile():
 def get_pricing_info(plan_type, billing_period='monthly', user_count=1):
     """Calculate pricing with discounts for different plan types"""
     base_prices = {
-        'individual_monthly': 2.99,
-        'individual_yearly': 24.99,  # ~17% savings vs monthly (2.99 * 12 = 35.88)
-        'team_monthly': 2.99,  # Base price before team discount
-        'team_yearly': 24.99   # Base price before team discount
+        'starter': 1.99,
+        'pro': 3.99,
+        'team': 39.00,  # Team plan with unlimited users
+        'individual_monthly': 1.99,  # Legacy support - maps to starter
+        'individual_yearly': 19.99,  # Legacy support
+        'team_monthly': 39.00,  # Legacy support - maps to team
+        'team_yearly': 390.00   # Legacy support - team yearly (10 months price)
     }
     
     base_price = base_prices.get(plan_type, base_prices['individual_monthly'])
