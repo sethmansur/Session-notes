@@ -71,10 +71,16 @@ class User(UserMixin, db.Model):
     
     def get_student_limit(self):
         """Get maximum number of students allowed for user's plan"""
-        if self.is_freemium_user():
-            return 4
-        else:
+        # Active subscription users have no limit
+        if self.subscription_status == 'active':
             return None  # No limit for paid plans
+        
+        # Active trial users have no limit
+        if self.is_trial_active():
+            return None  # No limit during trial
+        
+        # After trial expires or for freemium users, limit to 4 students
+        return 4
     
     def get_objectives_per_student_limit(self):
         """Get maximum number of objectives per student for user's plan"""  
@@ -85,21 +91,27 @@ class User(UserMixin, db.Model):
     
     def can_add_student(self, organization_id):
         """Check if user can add another student"""
-        if not self.is_freemium_user():
+        student_limit = self.get_student_limit()
+        
+        # No limit for active subscriptions or active trials
+        if student_limit is None:
             return True
         
         # Import here to avoid circular import issues
         current_count = Student.query.filter_by(organization_id=organization_id).count()
-        return current_count < self.get_student_limit()
+        return current_count < student_limit
     
     def can_add_objective(self, student_id):
         """Check if user can add another objective to a student"""
-        if not self.is_freemium_user():
+        objective_limit = self.get_objectives_per_student_limit()
+        
+        # No limit for active subscriptions or active trials
+        if objective_limit is None:
             return True
             
         # Import here to avoid circular import issues
         current_count = Objective.query.filter_by(student_id=student_id).count()
-        return current_count < self.get_objectives_per_student_limit()
+        return current_count < objective_limit
     
     # Password authentication methods
     def set_password(self, password):
