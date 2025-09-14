@@ -81,7 +81,7 @@
     </form>
 </div>
 
-{% if report_data or chart_data %}
+{% if report_data or chart_data or report_type in ['pie', 'bar_graph', 'chart'] %}
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <h3 style="margin: 0;">
@@ -184,15 +184,29 @@
         <canvas id="progressChart"></canvas>
     </div>
     {% elif report_type == 'pie' %}
+    {% if chart_data and chart_data.labels and chart_data.data %}
     <div style="width: 100%; height: 400px; margin-bottom: 2rem; display: flex; justify-content: center;">
         <div style="width: 400px; height: 400px;">
             <canvas id="pieChart"></canvas>
         </div>
     </div>
+    {% else %}
+    <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 2rem;">
+        <h4 style="color: #6c757d; margin-bottom: 1rem;">📊 No Data for Pie Chart</h4>
+        <p style="color: #6c757d; margin: 0;">No session data found for the selected student and date range. Try selecting a different student or expanding the date range.</p>
+    </div>
+    {% endif %}
     {% elif report_type == 'bar_graph' %}
+    {% if chart_data and chart_data.labels and chart_data.data %}
     <div style="width: 100%; height: 400px; margin-bottom: 2rem;">
         <canvas id="barChart"></canvas>
     </div>
+    {% else %}
+    <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 2rem;">
+        <h4 style="color: #6c757d; margin-bottom: 1rem;">📊 No Data for Bar Graph</h4>
+        <p style="color: #6c757d; margin: 0;">No session data found for the selected student and date range. Try selecting a different student or expanding the date range.</p>
+    </div>
+    {% endif %}
     
     {% elif report_type == 'comprehensive_dashboard' %}
     <!-- Comprehensive Zoho-style Dashboard -->
