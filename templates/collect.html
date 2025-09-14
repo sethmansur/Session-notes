@@ -59,11 +59,12 @@
     }
     .count-controls {
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
+        gap: 0.25rem;
+        min-width: 60px;
     }
-    .plus-buttons-container {
+    .count-buttons-stack {
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -148,23 +149,29 @@
         transform: scale(0.95);
         background: #4c1f78;
     }
-    .minus-btn {
-        width: 30px;
-        height: 30px;
+    .x-btn {
+        width: 40px;
+        height: 40px;
         border: none;
         border-radius: 50%;
-        background: #dc3545;
+        background: #fd7e14;
         color: white;
-        font-size: 1rem;
+        font-size: 1.2rem;
+        font-weight: bold;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
         transition: all 0.2s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    .minus-btn:hover {
-        background: #c82333;
+    .x-btn:hover {
+        background: #dc6009;
         transform: scale(1.1);
+    }
+    .x-btn:active {
+        transform: scale(0.95);
+        background: #c65609;
     }
     .student-select {
         display: flex;
@@ -339,16 +346,18 @@
                     <div class="objective-row">
                         <div class="objective-text">${objective.text}</div>
                         <div class="count-controls">
-                            <button class="minus-btn" onclick="decrementCount(${selectedStudent.id}, ${objective.id}, this)">✕</button>
-                            <input type="number" class="count-input" id="count-${selectedStudent.id}-${objective.id}" value="0" min="0" 
-                                   onchange="updateCountManually(${selectedStudent.id}, ${objective.id}, this)">
-                            <input type="number" class="count-input" id="count2-${selectedStudent.id}-${objective.id}" value="0" min="0" 
-                                   onchange="updateCountManually2(${selectedStudent.id}, ${objective.id}, this)">
-                            <input type="number" class="count-input" id="count3-${selectedStudent.id}-${objective.id}" value="0" min="0" 
-                                   onchange="updateCountManually3(${selectedStudent.id}, ${objective.id}, this)">
-                            <div class="plus-buttons-container">
-                                <button class="plus-btn" onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)">+</button>
-                                <button class="pt-btn" onclick="incrementPartialCount(${selectedStudent.id}, ${objective.id}, this)">+pt</button>
+                            <div class="count-buttons-stack">
+                                <button class="x-btn" onclick="incrementXCount(${selectedStudent.id}, ${objective.id}, this)" title="Incorrect/Error Response">X</button>
+                                <button class="pt-btn" onclick="incrementPartialCount(${selectedStudent.id}, ${objective.id}, this)" title="Partial Credit">+pt</button>
+                                <button class="plus-btn" onclick="incrementCount(${selectedStudent.id}, ${objective.id}, this)" title="Correct Response">+</button>
+                            </div>
+                            <div style="display: flex; gap: 0.25rem; margin-top: 0.5rem;">
+                                <input type="number" class="count-input" id="count-${selectedStudent.id}-${objective.id}" value="0" min="0" readonly
+                                       title="Correct responses (+)" style="width: 45px;">
+                                <input type="number" class="count-input" id="count2-${selectedStudent.id}-${objective.id}" value="0" min="0" readonly
+                                       title="Partial credit (+pt)" style="width: 45px;">
+                                <input type="number" class="count-input" id="count3-${selectedStudent.id}-${objective.id}" value="0" min="0" readonly
+                                       title="Incorrect responses (X)" style="width: 45px;">
                             </div>
                         </div>
                     </div>
@@ -484,12 +493,12 @@
     }
     
     async function incrementPartialCount(studentId, objectiveId, btn) {
-        const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
+        const countElement = document.getElementById(`count2-${studentId}-${objectiveId}`);
         const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
         
-        // Optimistic update for instant feedback - add 0.5 for partial credit
-        const currentCount = parseFloat(countElement.value) || 0;
-        const newCount = Math.round((currentCount + 0.5) * 2) / 2; // Round to nearest 0.5
+        // Optimistic update for instant feedback - increment count2 (+pt)
+        const currentCount = parseInt(countElement.value) || 0;
+        const newCount = currentCount + 1;
         countElement.value = newCount;
         countElement.style.transform = 'scale(1.2)';
         countElement.style.borderColor = '#6f42c1';
@@ -498,7 +507,25 @@
             countElement.style.borderColor = '#e1e5e9';
         }, 200);
         
-        await updateCountOnServer(studentId, objectiveId, newCount, sessionPromptElement ? sessionPromptElement.value : '');
+        await updateCountOnServer(studentId, objectiveId, newCount, sessionPromptElement ? sessionPromptElement.value : '', 'count2');
+    }
+    
+    async function incrementXCount(studentId, objectiveId, btn) {
+        const countElement = document.getElementById(`count3-${studentId}-${objectiveId}`);
+        const sessionPromptElement = document.getElementById(`session-prompt-${studentId}`);
+        
+        // Optimistic update for instant feedback - increment count3 (X)
+        const currentCount = parseInt(countElement.value) || 0;
+        const newCount = currentCount + 1;
+        countElement.value = newCount;
+        countElement.style.transform = 'scale(1.2)';
+        countElement.style.borderColor = '#fd7e14';
+        setTimeout(() => {
+            countElement.style.transform = 'scale(1)';
+            countElement.style.borderColor = '#e1e5e9';
+        }, 200);
+        
+        await updateCountOnServer(studentId, objectiveId, newCount, sessionPromptElement ? sessionPromptElement.value : '', 'count3');
     }
     async function decrementCount(studentId, objectiveId, btn) {
         const countElement = document.getElementById(`count-${studentId}-${objectiveId}`);
