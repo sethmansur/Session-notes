@@ -312,11 +312,12 @@ function showBulkStatusUpdate() {
 }
 
 function showInactiveUserCleanup() {
+    const inactiveUsers = {{ stats.inactive_users }};
     showResults('Finding Inactive Users', '<p>⏳ Scanning for users with expired subscriptions and no recent activity...</p>');
     setTimeout(() => {
         showResults('Inactive Users Found', 
-            '<p>Found {{ stats.inactive_users }} inactive users:</p>' +
-            '<ul><li>Users with expired subscriptions: {{ stats.inactive_users }}</li>' +
+            '<p>Found ' + inactiveUsers + ' inactive users:</p>' +
+            '<ul><li>Users with expired subscriptions: ' + inactiveUsers + '</li>' +
             '<li>No activity in 30+ days: <em>Analysis in progress...</em></li></ul>' +
             '<button class="tool-button danger" onclick="alert(\'Cleanup process would be confirmed here\')">Clean up Inactive Accounts</button>'
         );
@@ -356,12 +357,16 @@ function checkDataIntegrity() {
 }
 
 function viewDatabaseStats() {
+    const totalRecords = {{ stats.total_users + stats.total_organizations }};
+    const totalUsers = {{ stats.total_users }};
+    const totalOrgs = {{ stats.total_organizations }};
+    
     const stats = `
         <p><strong>Database Statistics:</strong></p>
         <ul>
-            <li>Total Records: ${{{ stats.total_users + stats.total_organizations }}}</li>
-            <li>Users: {{ stats.total_users }}</li>
-            <li>Organizations: {{ stats.total_organizations }}</li>
+            <li>Total Records: ${totalRecords}</li>
+            <li>Users: ${totalUsers}</li>
+            <li>Organizations: ${totalOrgs}</li>
             <li>Database Size: <em>Calculating...</em></li>
         </ul>
     `;
